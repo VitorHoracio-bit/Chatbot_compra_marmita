@@ -49,6 +49,7 @@ export class ChatUI {
    * Adiciona mensagem do usuario no chat.
    */
   appendUserMessage(text) {
+    const safeText = typeof text === 'string' ? text : String(text || '');
     const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const msgDiv = document.createElement('div');
@@ -63,7 +64,7 @@ export class ChatUI {
 
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = text; // 100% seguro contra XSS
+    bubble.textContent = safeText; // 100% seguro contra XSS
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'message-time';
@@ -83,6 +84,7 @@ export class ChatUI {
    * Adiciona mensagem do bot com formatacao segura e opcionais CTAs (WhatsApp, copiar).
    */
   appendBotMessage(text, options = {}) {
+    const safeText = typeof text === 'string' ? text : String(text || '');
     const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const msgDiv = document.createElement('div');
@@ -99,7 +101,7 @@ export class ChatUI {
     bubble.className = 'message-bubble';
 
     // Formata o texto seguro respeitando quebras e negrito
-    this.formatSafeMessageText(bubble, text);
+    this.formatSafeMessageText(bubble, safeText);
 
     // Se houver link do WhatsApp ou acao de copiar, anexa botoes
     if (options.whatsappUrl) {
@@ -158,7 +160,8 @@ export class ChatUI {
    * Formata texto em negrito (*texto*) e quebras de linha sem nunca usar innerHTML.
    */
   formatSafeMessageText(container, text) {
-    const lines = text.split('\n');
+    const safe = typeof text === 'string' ? text : String(text || '');
+    const lines = safe.split('\n');
 
     lines.forEach((line, lineIndex) => {
       if (lineIndex > 0) {

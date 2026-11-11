@@ -14,8 +14,9 @@ import { CartStore } from '../js/cart/store.js';
 export async function runBrowserTests(containerEl, summaryEl) {
   containerEl.innerHTML = '<div style="color: #64748b; padding: 20px;">Carregando suíte de testes...</div>';
 
-  // Carrega redteam.json via fetch relativo no navegador
-  const redteamRes = await fetch('./redteam.json');
+  // Carrega redteam.json resolvendo o caminho a partir da localização do módulo
+  const redteamUrl = new URL('./redteam.json', import.meta.url).href;
+  const redteamRes = await fetch(redteamUrl);
   const testCases = await redteamRes.json();
 
   const redteamSuite = new TestRunner('Red Team Attack Suite (100% Block Rate)');

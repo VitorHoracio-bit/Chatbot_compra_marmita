@@ -22,14 +22,14 @@ const mockConfig = {
 };
 
 pricingSuite.test('formatCurrency formata centavos corretamente para BRL', () => {
-  // R$ 28,00 (pode conter espaco regular ou non-breaking space \u00a0)
-  const formatted = formatCurrency(2800).replace(/\u00a0/g, ' ');
+  // R$ 28,00 (pode conter espaco regular, no-break space \u00a0 ou narrow no-break space \u202f)
+  const formatted = formatCurrency(2800).replace(/[\u00a0\u202f]/g, ' ');
   assert(formatted.includes('R$') && formatted.includes('28,00'), `Esperado R$ 28,00, obtido: ${formatted}`);
 
-  const zero = formatCurrency(0).replace(/\u00a0/g, ' ');
+  const zero = formatCurrency(0).replace(/[\u00a0\u202f]/g, ' ');
   assert(zero.includes('R$') && zero.includes('0,00'), `Esperado R$ 0,00, obtido: ${zero}`);
 
-  const cents = formatCurrency(650).replace(/\u00a0/g, ' ');
+  const cents = formatCurrency(650).replace(/[\u00a0\u202f]/g, ' ');
   assert(cents.includes('R$') && cents.includes('6,50'), `Esperado R$ 6,50, obtido: ${cents}`);
 });
 

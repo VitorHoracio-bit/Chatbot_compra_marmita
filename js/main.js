@@ -22,10 +22,12 @@ class App {
 
   async init() {
     try {
-      // Carregamento com caminhos estritamente relativos (atende à Restrição 5)
+      // Carregamento ancorado na localização do módulo (100% relativo e imune a rotas)
+      const menuUrl = new URL('../data/menu.json', import.meta.url).href;
+      const configUrl = new URL('../data/config.json', import.meta.url).href;
       const [menuRes, configRes] = await Promise.all([
-        fetch('./data/menu.json'),
-        fetch('./data/config.json')
+        fetch(menuUrl),
+        fetch(configUrl)
       ]);
 
       if (!menuRes.ok || !configRes.ok) {
@@ -532,7 +534,12 @@ class App {
 }
 
 // Inicializa a aplicação quando o DOM estiver pronto
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const app = new App();
+    app.init();
+  });
+} else {
   const app = new App();
   app.init();
-});
+}
