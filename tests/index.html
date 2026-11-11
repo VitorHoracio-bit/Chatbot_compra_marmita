@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Testes Automatizados — Marmitaria</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    body {
+      background-color: #f1f5f9;
+      padding: 30px 20px;
+    }
+    .test-wrapper {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-wrapper">
+    <div class="test-header">
+      <div>
+        <h1 style="font-size: 1.5rem; font-weight: bold; color: #0f172a;">🧪 Painel de Testes Automatizados (Navegador)</h1>
+        <p style="color: #64748b; font-size: 0.9rem;">Testes de precificação, carrinho, guardrails e suíte de ataque Red Team.</p>
+      </div>
+      <div>
+        <a href="../index.html" class="btn-secondary" style="text-decoration: none; display: inline-block;">← Voltar ao Chatbot</a>
+      </div>
+    </div>
+
+    <div id="test-summary">Iniciando execução dos testes...</div>
+    <div id="test-suites-container"></div>
+  </div>
+
+  <script type="module">
+    import { runBrowserTests } from './browser-runner.js';
+    const container = document.getElementById('test-suites-container');
+    const summary = document.getElementById('test-summary');
+    runBrowserTests(container, summary);
+  </script>
+</body>
+</html>

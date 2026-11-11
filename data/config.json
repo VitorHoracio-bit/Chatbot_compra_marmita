@@ -1,0 +1,31 @@
+{
+  "restaurant_name": "Marmitaria Sabor de Casa",
+  "whatsapp_number": "5511999999999",
+  "currency": "BRL",
+  "timezone": "America/Sao_Paulo",
+  "delivery": {
+    "default_fee": 700,
+    "free_delivery_threshold": 6000,
+    "neighborhoods": [
+      { "name": "Centro", "aliases": ["centro", "se", "republica"], "fee": 500 },
+      { "name": "Jardim Paulista", "aliases": ["jardim paulista", "paulista", "cerqueira cesar"], "fee": 700 },
+      { "name": "Vila Mariana", "aliases": ["vila mariana", "mariana", "ana rosa"], "fee": 800 },
+      { "name": "Pinheiros", "aliases": ["pinheiros", "vila madalena"], "fee": 900 },
+      { "name": "Moema", "aliases": ["moema", "ibirapuera"], "fee": 1000 },
+      { "name": "Outros Bairros", "aliases": ["outros", "outro"], "fee": 1200 }
+    ]
+  },
+  "limits": {
+    "max_items_per_order": 20,
+    "max_qty_per_item": 10,
+    "max_input_length": 300,
+    "max_obs_length": 140,
+    "rate_limit_per_minute": 10
+  },
+  "default_llm_mode": "offline",
+  "available_models": [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro"
+  ]
+}

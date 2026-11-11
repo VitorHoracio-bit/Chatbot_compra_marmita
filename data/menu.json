@@ -1,0 +1,162 @@
+{
+  "itens": [
+    {
+      "id": "bife-acebolado",
+      "nome": "Bife de Alcatra Acebolado",
+      "descricao": "Bife de alcatra macio com cebolas douradas. Acompanha arroz branco, feijão carioca e farofa crocante.",
+      "categoria": "marmita",
+      "preco_unitario": 2800,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 15,
+      "personalizacoes_permitidas": [
+        "sem cebola",
+        "cebola extra",
+        "ao ponto",
+        "bem passado",
+        "mal passado",
+        "sem feijao",
+        "sem farofa",
+        "pouco arroz",
+        "arroz integral"
+      ]
+    },
+    {
+      "id": "frango-grelhado",
+      "nome": "Frango Grelhado com Legumes",
+      "descricao": "Peito de frango marinado em ervas finas grelhado. Acompanha arroz, feijão e mix de legumes cozidos no vapor.",
+      "categoria": "marmita",
+      "preco_unitario": 2400,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 20,
+      "personalizacoes_permitidas": [
+        "sem legumes",
+        "sem feijao",
+        "pouco arroz",
+        "arroz integral",
+        "bem passado"
+      ]
+    },
+    {
+      "id": "feijoada-completa",
+      "nome": "Feijoada Completa Tradicional",
+      "descricao": "Feijão preto encorpado com carnes nobres selecionadas. Acompanha arroz branco, couve refogada, farofa e torresmo.",
+      "categoria": "marmita",
+      "preco_unitario": 3200,
+      "disponivel_hoje": false,
+      "estoque_do_dia": 12,
+      "personalizacoes_permitidas": [
+        "sem couve",
+        "sem torresmo",
+        "sem farofa",
+        "pouco arroz",
+        "pimenta a parte"
+      ]
+    },
+    {
+      "id": "strogonoff-frango",
+      "nome": "Strogonoff de Frango Cremoso",
+      "descricao": "Cubos de frango ao molho cremoso de champignon. Acompanha arroz branco soltinho e batata palha crocante.",
+      "categoria": "marmita",
+      "preco_unitario": 2600,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 18,
+      "personalizacoes_permitidas": [
+        "sem champignon",
+        "sem batata palha",
+        "batata palha a parte",
+        "pouco arroz"
+      ]
+    },
+    {
+      "id": "peixe-grelhado",
+      "nome": "Filé de Tilápia Grelhado",
+      "descricao": "Filé de tilápia fresca com ervas e azeite. Acompanha purê de batatas caseiro e arroz branco.",
+      "categoria": "marmita",
+      "preco_unitario": 2900,
+      "disponivel_hoje": false,
+      "estoque_do_dia": 10,
+      "personalizacoes_permitidas": [
+        "sem pure",
+        "pouco arroz",
+        "molho de alcaparras",
+        "sem alcaparras"
+      ]
+    },
+    {
+      "id": "lasanha-bolonhesa",
+      "nome": "Lasanha à Bolonhesa",
+      "descricao": "Massa artesanal intercalada com molho bolonhesa de carne, presunto e queijo mussarela gratinado.",
+      "categoria": "marmita",
+      "preco_unitario": 2700,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 8,
+      "personalizacoes_permitidas": [
+        "sem queijo gratinado",
+        "molho extra"
+      ]
+    },
+    {
+      "id": "guarana-lata",
+      "nome": "Guaraná Antarctica 350ml",
+      "descricao": "Refrigerante em lata 350ml gelado.",
+      "categoria": "bebida",
+      "preco_unitario": 600,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 50,
+      "personalizacoes_permitidas": [
+        "gelado",
+        "temperatura ambiente"
+      ]
+    },
+    {
+      "id": "coca-zero",
+      "nome": "Coca-Cola Zero 350ml",
+      "descricao": "Refrigerante sem açúcar em lata 350ml gelado.",
+      "categoria": "bebida",
+      "preco_unitario": 650,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 40,
+      "personalizacoes_permitidas": [
+        "gelado",
+        "temperatura ambiente"
+      ]
+    },
+    {
+      "id": "suco-laranja",
+      "nome": "Suco Natural de Laranja 400ml",
+      "descricao": "Suco 100% natural espremido na hora, copo selado 400ml.",
+      "categoria": "bebida",
+      "preco_unitario": 800,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 25,
+      "personalizacoes_permitidas": [
+        "sem gelo",
+        "com gelo",
+        "sem acucar",
+        "com acucar"
+      ]
+    },
+    {
+      "id": "pudim-leite",
+      "nome": "Pudim de Leite Condensado",
+      "descricao": "Fatia tradicional e cremosa com calda de caramelo dourado.",
+      "categoria": "sobremesa",
+      "preco_unitario": 900,
+      "disponivel_hoje": true,
+      "estoque_do_dia": 14,
+      "personalizacoes_permitidas": [
+        "pouca calda",
+        "calda extra"
+      ]
+    }
+  ],
+  "cardapio_por_dia": {
+    "segunda": ["bife-acebolado", "frango-grelhado", "strogonoff-frango", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "terca": ["bife-acebolado", "frango-grelhado", "peixe-grelhado", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "quarta": ["feijoada-completa", "frango-grelhado", "bife-acebolado", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "quinta": ["strogonoff-frango", "bife-acebolado", "lasanha-bolonhesa", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "sexta": ["peixe-grelhado", "bife-acebolado", "frango-grelhado", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "sabado": ["feijoada-completa", "lasanha-bolonhesa", "frango-grelhado", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"],
+    "domingo": ["feijoada-completa", "strogonoff-frango", "lasanha-bolonhesa", "guarana-lata", "coca-zero", "suco-laranja", "pudim-leite"]
+  }
+}

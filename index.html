@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Chatbot inteligente para pedidos de marmitas com inteligência artificial e cálculo determinístico.">
+  <title>Marmitaria Sabor de Casa — Pedidos Online</title>
+  
+  <!-- Caminhos Estritamente Relativos (Compatibilidade GitHub Pages em Subdiretório) -->
+  <link rel="stylesheet" href="./css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍱</text></svg>">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header da Aplicação -->
+    <header class="app-header" role="banner">
+      <div class="brand-section">
+        <div class="brand-logo" aria-hidden="true">🍱</div>
+        <div class="brand-info">
+          <h1>Marmitaria Sabor de Casa</h1>
+          <div class="brand-status">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Aberto para pedidos</span>
+            <span class="mode-badge" id="header-mode-badge">Modo Offline (C)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Seletor Rápido de Dia da Semana para Simulação -->
+        <select id="day-of-week-select" class="form-control" style="padding: 6px 10px; font-size: 0.82rem;" aria-label="Simular dia da semana">
+          <option value="segunda">Segunda-feira</option>
+          <option value="terca">Terça-feira</option>
+          <option value="quarta">Quarta-feira</option>
+          <option value="quinta">Quinta-feira</option>
+          <option value="sexta">Sexta-feira</option>
+          <option value="sabado">Sábado</option>
+          <option value="domingo">Domingo</option>
+        </select>
+
+        <!-- Botão Alternar Tema Claro/Escuro -->
+        <button id="btn-theme-toggle" class="btn-icon" type="button" aria-label="Alternar tema claro e escuro" title="Alternar tema">
+          <span id="theme-icon" aria-hidden="true">🌙</span>
+        </button>
+
+        <!-- Botão Abrir Configurações / Chave de API -->
+        <button id="btn-open-settings" class="btn-icon" type="button" aria-label="Configurações e Chave de API" title="Configurações">
+          <span aria-hidden="true">⚙️</span>
+        </button>
+
+        <!-- Botão Abrir Testes Unitários no Navegador -->
+        <a href="./tests/index.html" class="btn-icon" title="Executar Testes Unitários e Red Team" aria-label="Abrir Painel de Testes" style="text-decoration: none;">
+          <span aria-hidden="true">🧪</span>
+        </a>
+
+        <!-- Botão Abrir Carrinho (com Badge) -->
+        <button id="btn-toggle-cart" class="cart-toggle-btn" type="button" aria-label="Ver carrinho de compras">
+          <span aria-hidden="true">🛒</span>
+          <span>Carrinho</span>
+          <span class="cart-badge" id="header-cart-badge">0</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Área Principal Dividida (Chat + Painel Lateral de Pedido) -->
+    <main class="main-content" role="main">
+      <!-- Container do Chat -->
+      <section class="chat-container" aria-label="Atendimento via Chat">
+        <!-- Lista de Mensagens -->
+        <div class="chat-messages" id="chat-messages" role="log" aria-live="polite">
+          <!-- Mensagens renderizadas dinamicamente via JS -->
+        </div>
+
+        <!-- Barra de Ações Rápidas (Pills) -->
+        <nav class="quick-actions-bar" aria-label="Ações rápidas">
+          <button class="btn-quick" type="button" data-action="menu">📋 Ver Cardápio</button>
+          <button class="btn-quick" type="button" data-action="cart">🛒 Ver Pedido</button>
+          <button class="btn-quick" type="button" data-action="delivery">📍 Informar Endereço</button>
+          <button class="btn-quick" type="button" data-action="checkout">✅ Finalizar Pedido</button>
+          <button class="btn-quick" type="button" data-action="help">❓ Ajuda</button>
+        </nav>
+
+        <!-- Barra de Entrada de Mensagem -->
+        <div class="chat-input-bar">
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              id="chat-input" 
+              class="chat-input" 
+              placeholder="Digite seu pedido (ex: 2 bifes ao ponto e 1 guaraná)..." 
+              maxlength="300"
+              autocomplete="off"
+              aria-label="Mensagem para o assistente de vendas"
+            >
+            <span class="char-counter" id="char-counter" aria-hidden="true">0/300</span>
+          </div>
+
+          <button id="btn-send" class="btn-send" type="button" aria-label="Enviar mensagem">
+            <span aria-hidden="true">➤</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Painel Lateral / Drawer do Carrinho em Tempo Real -->
+      <aside class="cart-sidebar" id="cart-sidebar" aria-label="Carrinho de Compras">
+        <div class="cart-header">
+          <h2>
+            <span aria-hidden="true">🛒</span>
+            <span>Meu Pedido</span>
+            <span class="cart-badge" id="sidebar-cart-badge">0</span>
+          </h2>
+          <button id="btn-close-cart" class="btn-close-modal" type="button" aria-label="Fechar carrinho">&times;</button>
+        </div>
+
+        <div class="cart-body">
+          <!-- Card de Progresso para Frete Grátis -->
+          <div class="free-shipping-card" id="free-shipping-card">
+            <span id="shipping-text">Calculando frete grátis...</span>
+            <div class="shipping-progress-bg">
+              <div class="shipping-progress-bar" id="shipping-bar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Lista de Itens do Carrinho -->
+          <div id="cart-items-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Itens renderizados dinamicamente -->
+          </div>
+
+          <!-- Estado Vazio -->
+          <div class="cart-empty-state" id="cart-empty-state">
+            <div class="cart-empty-icon" aria-hidden="true">🍱</div>
+            <p><strong>Seu prato ainda está vazio!</strong></p>
+            <p style="font-size: 0.85rem;">Adicione marmitas pelo chat ou digitando o que deseja.</p>
+          </div>
+        </div>
+
+        <!-- Rodapé do Carrinho com Totais Determinísticos -->
+        <div class="cart-footer">
+          <div class="totals-row">
+            <span>Subtotal:</span>
+            <span id="cart-subtotal" style="font-weight: 600;">R$ 0,00</span>
+          </div>
+          <div class="totals-row">
+            <span>Taxa de Entrega:</span>
+            <span id="cart-delivery" style="font-weight: 600;">R$ 7,00</span>
+          </div>
+          <div class="totals-row grand-total">
+            <span>TOTAL:</span>
+            <span id="cart-total" style="color: var(--primary);">R$ 7,00</span>
+          </div>
+
+          <button id="btn-checkout" class="btn-checkout" type="button" disabled>
+            <span>Finalizar Pedido</span>
+            <span aria-hidden="true">➜</span>
+          </button>
+
+          <button id="btn-clear-cart" class="btn-clear-cart" type="button">
+            Esvaziar Carrinho
+          </button>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Modal de Configurações do Provedor de IA (BYOK e Privacidade) -->
+  <div class="modal-overlay" id="modal-settings" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-settings-title">⚙️ Configurações do Atendente de IA</h3>
+        <button class="btn-close-modal" type="button" aria-label="Fechar modal">&times;</button>
+      </div>
+
+      <form id="form-settings" class="modal-body">
+        <div class="form-group">
+          <label for="llm-mode-select">Modo de Operação da IA:</label>
+          <select id="llm-mode-select" class="form-control">
+            <option value="offline">Modo C: Offline Determinístico (Sem chave, sem custos, seguro)</option>
+            <option value="gemini">Modo A: Google Gemini API (BYOK - Traga sua chave)</option>
+            <option value="webllm">Modo B: WebLLM Local no Navegador (WebGPU)</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="api-key-group" style="display: none;">
+          <label for="api-key-input">Chave de API do Google Gemini (AI Studio):</label>
+          <input 
+            type="password" 
+            id="api-key-input" 
+            class="form-control" 
+            placeholder="AIzaSy..." 
+            autocomplete="off"
+          >
+          <small style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">
+            Obtenha sua chave gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Google AI Studio</a>.
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="model-select">Modelo de Linguagem:</label>
+          <select id="model-select" class="form-control">
+            <option value="gemini-2.0-flash">gemini-2.0-flash (Recomendado - Mais rápido e preciso)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          </select>
+        </div>
+
+        <div class="privacy-notice">
+          <strong>🔒 Aviso de Privacidade e Segurança (100% Client-Side):</strong>
+          <p style="margin-top: 4px;">Sua chave de API e seus dados pessoais ficam armazenados exclusivamente na memória da sua sessão do navegador (sessionStorage). Eles NUNCA são gravados em servidores nossos ou enviados a terceiros além da própria API do Google.</p>
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
+          <button type="button" id="btn-clear-all-data" class="btn-secondary" style="color: var(--danger); border-color: var(--danger);">Limpar Todos os Dados</button>
+          <button type="button" class="btn-secondary btn-modal-cancel">Cancelar</button>
+          <button type="submit" class="btn-primary">Salvar Alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Endereço e Dados de Entrega -->
+  <div class="modal-overlay" id="modal-delivery" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-delivery-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-delivery-title">📍 Dados para Entrega</h3>
+        <button class="btn-close-modal" type="button" aria-label="Fechar modal">&times;</button>
+      </div>
+
+      <form id="form-delivery" class="modal-body">
+        <div class="form-group">
+          <label for="delivery-bairro-select">Bairro / Região:</label>
+          <select id="delivery-bairro-select" class="form-control" required>
+            <!-- Bairros carregados dinamicamente do config.json -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="delivery-address-input">Endereço Completo (Rua, Número, Complemento):</label>
+          <input 
+            type="text" 
+            id="delivery-address-input" 
+            class="form-control" 
+            placeholder="Ex: Rua das Flores, 123, Apto 42" 
+            required
+            maxlength="200"
+          >
+        </div>
+
+        <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+          ℹ️ <strong>Importante:</strong> Não realizamos cobrança online. O pagamento é realizado diretamente na entrega em dinheiro/cartão ou via PIX ao receber o pedido.
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
+          <button type="button" class="btn-secondary btn-modal-cancel">Voltar</button>
+          <button type="submit" class="btn-primary">Registrar Endereço</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Script Principal com Tipo Módulo e Caminho Relativo -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

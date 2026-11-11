@@ -1,0 +1,12 @@
+{
+  "name": "chatbot-compra-marmita",
+  "version": "1.0.0",
+  "description": "Chatbot web client-side para restaurante de marmitas com LLM e fallback offline",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/runner.js"
+  },
+  "keywords": ["chatbot", "llm", "marmitas", "guardrails", "client-side"],
+  "author": "",
+  "license": "MIT"
+}
