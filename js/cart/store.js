@@ -18,7 +18,8 @@ export class CartStore {
    * @param {string} [currentDay] Dia da semana opcional ('segunda', 'terca', etc.)
    */
   constructor(menuData, configData, currentDay = null) {
-    this.menuData = menuData || { itens: [], cardapio_por_dia: {} };
+    // Clona menuData para isolamento de estado e controle de estoque por sessao
+    this.menuData = menuData ? JSON.parse(JSON.stringify(menuData)) : { itens: [], cardapio_por_dia: {} };
     this.configData = configData || {};
     this.currentDay = currentDay || this.detectToday();
 
@@ -57,9 +58,10 @@ export class CartStore {
     const dayMenuIds = this.menuData.cardapio_por_dia?.[this.currentDay] || [];
     this.availableItems = this.menuData.itens.map(item => {
       const isAvailableDay = dayMenuIds.length > 0 ? dayMenuIds.includes(item.id) : item.disponivel_hoje;
+      const hasStock = item.estoque_do_dia === undefined || item.estoque_do_dia > 0;
       return {
         ...item,
-        disponivel_hoje: isAvailableDay
+        disponivel_hoje: isAvailableDay && hasStock
       };
     });
   }
@@ -140,6 +142,12 @@ export class CartStore {
    * @returns {{ success: boolean, message: string, rejectedCustomizations?: string[] }}
    */
   addItem({ itemId, quantidade = 1, personalizacoes = [], observacoes = '' }) {
+    if (this.status === 'confirmado') {
+      // Pedido anterior finalizado; inicia novo pedido
+      this.items = [];
+      this.status = 'montando';
+    }
+
     const item = this.findMenuItem(itemId);
     if (!item) {
       return { success: false, message: `O item "${itemId}" não foi encontrado no cardápio.` };
@@ -151,9 +159,12 @@ export class CartStore {
         .map(i => i.nome)
         .slice(0, 2);
       const sug = alternativas.length ? ` Que tal experimentar: ${alternativas.join(' ou ')}?` : '';
+      const isEsgotado = item.estoque_do_dia !== undefined && item.estoque_do_dia <= 0;
       return {
         success: false,
-        message: `Desculpe, o item "${item.nome}" não está disponível hoje.${sug}`
+        message: isEsgotado
+          ? `Desculpe, o item "${item.nome}" já está esgotado hoje.${sug}`
+          : `Desculpe, o item "${item.nome}" não está disponível hoje.${sug}`
       };
     }
 
@@ -402,6 +413,27 @@ export class CartStore {
         requiresDelivery: true,
         message: 'Por favor, informe o seu bairro e endereço completo antes de finalizar o pedido.'
       };
+    }
+
+    // Subtrai as quantidades dos itens pedidos do cardapio
+    for (const cartItem of this.items) {
+      // Subtrai dos itens disponiveis hoje
+      const availableItem = this.availableItems.find(i => i.id === cartItem.id);
+      if (availableItem && availableItem.estoque_do_dia !== undefined) {
+        availableItem.estoque_do_dia = Math.max(0, availableItem.estoque_do_dia - cartItem.quantidade);
+        if (availableItem.estoque_do_dia <= 0) {
+          availableItem.disponivel_hoje = false;
+        }
+      }
+
+      // Subtrai tambem da fonte original em menuData.itens para persistencia
+      const rawMenuItem = this.menuData.itens?.find(i => i.id === cartItem.id);
+      if (rawMenuItem && rawMenuItem.estoque_do_dia !== undefined) {
+        rawMenuItem.estoque_do_dia = Math.max(0, rawMenuItem.estoque_do_dia - cartItem.quantidade);
+        if (rawMenuItem.estoque_do_dia <= 0) {
+          rawMenuItem.disponivel_hoje = false;
+        }
+      }
     }
 
     this.status = 'confirmado';

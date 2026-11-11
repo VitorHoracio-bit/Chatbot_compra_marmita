@@ -102,9 +102,10 @@ flowchart TD
 - A taxa de entrega é calculada com base no bairro informado (`data/config.json`).
 - Pedidos com subtotal a partir de **R$ 60,00** recebem **Frete Grátis** automaticamente, com barra de progresso visual exibida no carrinho.
 
-### 4. Confirmação e Finalização no WhatsApp
-- Ao confirmar o pedido, o sistema exibe o resumo completo e gera um link formatado para envio direto ao WhatsApp da marmitaria (`https://wa.me/...`).
-- O sistema informa explicitamente que não realiza cobrança online, sendo o pagamento efetuado na entrega (cartão/dinheiro) ou via PIX ao receber o pedido.
+### 4. Confirmação e Subtração Automática de Estoque
+- Ao confirmar o pedido com sucesso, as **quantidades dos itens pedidos são automaticamente subtraídas do estoque diário do cardápio** (`estoque_do_dia` em `CartStore`).
+- Se o estoque de um prato for totalmente consumido, ele passa a figurar como esgotado e novas tentativas de adição são gentilmente recusadas com sugestão de pratos alternativos.
+- O sistema exibe o resumo completo e gera um link formatado para envio direto ao WhatsApp da marmitaria (`https://wa.me/...`), informando que o pagamento é realizado na entrega ou via PIX ao receber.
 
 ---
 
@@ -157,7 +158,7 @@ Chatbot_compra_marmita/
 
 ## 🧪 Testes Automatizados e Critérios de Aceite
 
-A aplicação conta com **67 testes automatizados** cobrindo todos os módulos críticos.
+A aplicação conta com **69 testes automatizados** cobrindo todos os módulos críticos.
 
 ### Como Rodar via Linha de Comando (CLI):
 ```bash
@@ -170,7 +171,7 @@ Basta abrir o arquivo `tests/index.html` em qualquer navegador web ou acessar a 
 
 ### Resumo das Suítes:
 - **Pricing & Currency Tests (9 testes):** Precisão de centavos, formatação BRL, cálculo de taxa por bairro e limiar de frete grátis.
-- **Cart Store Tests (10 testes):** Adição, recusa de indisponíveis, estoque diário, personalização por unidade, sanitização de observações e geração de link WhatsApp.
+- **Cart Store Tests (12 testes):** Adição, recusa de indisponíveis, estoque diário, subtração automática de estoque ao confirmar pedido, personalização por unidade, sanitização de observações e geração de link WhatsApp.
 - **Guardrails Suite (9 testes):** Normalização NFKC, homóglifos, limitação de taxa, detecção de injeção e validação estrita de JSON Schema.
 - **Red Team Attack Suite (35 testes):** 35 ataques cibernéticos contra o agente (DAN, Developer Mode, substituição de persona, extração de system prompt, injeções XML/script e alegações de autoridade) — **100% bloqueados**.
 - **Agent Orchestration Tests (4 testes):** Condução do pedido de ponta a ponta, fallback transparente de provedor e esvaziamento de carrinho.

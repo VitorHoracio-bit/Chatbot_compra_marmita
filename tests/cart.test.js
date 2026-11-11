@@ -185,3 +185,36 @@ cartSuite.test('Confirmacao de pedido bloqueia carrinho vazio ou sem endereco e 
   assert(resConfirmado.whatsappUrl.startsWith('https://wa.me/5511999999999?text='), 'Deve gerar URL correta do WhatsApp');
   assert(resConfirmado.orderText.includes('Bife de Alcatra Acebolado'), 'Texto deve conter os itens');
 });
+
+cartSuite.test('Subtracao automatica do estoque do cardapio ao confirmar pedido com sucesso', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado tem estoque 5
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 2 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+
+  const itemAntes = cart.findMenuItem('bife-acebolado');
+  assertEqual(itemAntes.estoque_do_dia, 5);
+
+  const res = cart.confirmOrder();
+  assert(res.success);
+
+  const itemDepois = cart.findMenuItem('bife-acebolado');
+  assertEqual(itemDepois.estoque_do_dia, 3, 'Estoque deve ser reduzido de 5 para 3');
+});
+
+cartSuite.test('Esgotamento de estoque ao confirmar e rejeicao de novas adicoes', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado tem estoque 5
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 5 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+
+  const resConfirm = cart.confirmOrder();
+  assert(resConfirm.success);
+
+  const itemApos = cart.findMenuItem('bife-acebolado');
+  assertEqual(itemApos.estoque_do_dia, 0);
+  assertEqual(itemApos.disponivel_hoje, false);
+
+  // Tentativa de adicionar prato esgotado
+  const resNovo = cart.addItem({ itemId: 'bife-acebolado', quantidade: 1 });
+  assert(!resNovo.success, 'Nao deve permitir adicionar item com estoque esgotado');
+  assert(resNovo.message.includes('esgotado') || resNovo.message.includes('não está disponível'));
+});
