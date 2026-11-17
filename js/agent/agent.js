@@ -53,6 +53,16 @@ export class MarmitaAgent {
       };
     }
 
+    // 1.1 Verificação de API Key obrigatória
+    if (this.llmManager?.requireApiKey && !this.llmManager.hasValidKey()) {
+      return {
+        text: '🔑 **Chave de API necessária!**\n\nPara conversar com o atendente virtual inteligente, por favor informe sua chave de API do **Google Gemini** nas **Configurações (⚙️)** no topo da página.\n\nSua chave fica salva apenas na sessão do seu navegador (100% segura e privada).',
+        intent: 'chave_ausente',
+        actions: [],
+        requiresApiKey: true
+      };
+    }
+
     const sanitizedInput = inputValidation.sanitizedText;
 
     // 2. Montagem de Contexto e Delimitacao
@@ -80,6 +90,9 @@ export class MarmitaAgent {
       } catch (err) {
         console.warn(`Tentativa ${attempts} de chamada ao LLM falhou:`, err.message);
         if (attempts >= maxAttempts) {
+          if (this.llmManager?.requireApiKey) {
+            throw err;
+          }
           // Fallback final para modo offline
           const fallback = await this.llmManager.offlineProvider.generateResponse(systemPrompt, sanitizedInput);
           llmResult = fallback;

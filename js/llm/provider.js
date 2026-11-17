@@ -14,6 +14,8 @@ export class LLMProviderManager {
    */
   constructor(cartStore, initialConfig = {}) {
     this.cartStore = cartStore;
+    this.initialConfig = initialConfig;
+    this.requireApiKey = initialConfig.require_api_key ?? false;
     this.mode = initialConfig.default_llm_mode || 'offline'; // 'offline' | 'gemini' | 'webllm'
     this.model = 'gemini-2.0-flash';
     this.apiKey = this.loadStoredApiKey();
@@ -85,9 +87,17 @@ export class LLMProviderManager {
    * @returns {Promise<{ result: object, providerUsed: string, fallbackApplied: boolean, warning?: string }>}
    */
   async generateResponse(systemPrompt, userMessage, history = []) {
-    // Se estiver no Modo Gemini mas sem chave, usa fallback offline com aviso
+    // Se exigir API Key (padrão) e não houver chave válida, recusa a chamada imediatamente
+    if (this.requireApiKey && !this.hasValidKey()) {
+      throw new Error('Chave de API do Gemini não configurada. Por favor, adicione sua chave de API nas Configurações (⚙️) para utilizar o chatbot.');
+    }
+
+    // Se estiver no Modo Gemini
     if (this.mode === 'gemini') {
       if (!this.hasValidKey()) {
+        if (this.requireApiKey) {
+          throw new Error('Chave de API do Gemini não configurada. Por favor, adicione sua chave de API nas Configurações (⚙️) para utilizar o chatbot.');
+        }
         const result = await this.offlineProvider.generateResponse(systemPrompt, userMessage);
         return {
           result,
@@ -105,6 +115,10 @@ export class LLMProviderManager {
           fallbackApplied: false
         };
       } catch (err) {
+        if (this.requireApiKey) {
+          // Quando requer API key, lança o erro diretamente para a UI informar o usuário em vez de silenciar com offline
+          throw err;
+        }
         console.warn('Falha no Gemini, alternando para motor offline (Modo C):', err.message);
         const result = await this.offlineProvider.generateResponse(systemPrompt, userMessage);
         return {

@@ -21,7 +21,7 @@
           <div class="brand-status">
             <span class="status-dot" aria-hidden="true"></span>
             <span>Aberto para pedidos</span>
-            <span class="mode-badge" id="header-mode-badge">Modo Offline (C)</span>
+            <span class="mode-badge" id="header-mode-badge">Gemini (Aguardando Chave)</span>
           </div>
         </div>
       </div>
@@ -174,20 +174,21 @@
         <div class="form-group">
           <label for="llm-mode-select">Modo de Operação da IA:</label>
           <select id="llm-mode-select" class="form-control">
-            <option value="offline">Modo C: Offline Determinístico (Sem chave, sem custos, seguro)</option>
-            <option value="gemini">Modo A: Google Gemini API (BYOK - Traga sua chave)</option>
+            <option value="gemini" selected>Modo A: Google Gemini API (BYOK - Traga sua chave) [Obrigatório]</option>
+            <option value="offline">Modo C: Offline de Contingência (Sem chave)</option>
             <option value="webllm">Modo B: WebLLM Local no Navegador (WebGPU)</option>
           </select>
         </div>
 
-        <div class="form-group" id="api-key-group" style="display: none;">
-          <label for="api-key-input">Chave de API do Google Gemini (AI Studio):</label>
+        <div class="form-group" id="api-key-group">
+          <label for="api-key-input">Chave de API do Google Gemini (AI Studio): <span style="color: var(--danger);">*</span></label>
           <input 
             type="password" 
             id="api-key-input" 
             class="form-control" 
-            placeholder="AIzaSy..." 
+            placeholder="Cole aqui sua chave: AIzaSy..." 
             autocomplete="off"
+            required
           >
           <small style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">
             Obtenha sua chave gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Google AI Studio</a>.

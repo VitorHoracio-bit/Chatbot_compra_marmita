@@ -48,6 +48,12 @@ class App {
       this.setupCartListeners();
       this.setupModals();
       this.setupDaySelector();
+      this.updateHeaderBadge();
+
+      // Se exigir API key e ela ainda não foi fornecida, abre o modal de configurações na largada
+      if (this.llmManager.requireApiKey && !this.llmManager.hasValidKey()) {
+        this.openSettingsModal();
+      }
 
       // Boas-vindas inicial no chat
       this.showWelcomeMessage();
@@ -143,6 +149,10 @@ class App {
       if (response.requiresDelivery) {
         this.openDeliveryModal();
       }
+
+      if (response.requiresApiKey) {
+        this.openSettingsModal();
+      }
     } catch (err) {
       this.chatUI.hideTyping();
       this.chatUI.appendBotMessage(`Ops! Ocorreu um problema inesperado: ${err.message}.`);
@@ -171,9 +181,43 @@ class App {
     }
   }
 
+  updateHeaderBadge() {
+    const badge = document.getElementById('header-mode-badge');
+    if (!badge) return;
+
+    const mode = this.llmManager.getMode();
+    const hasKey = this.llmManager.hasValidKey();
+
+    if (mode === 'gemini') {
+      if (hasKey) {
+        badge.textContent = `Gemini (${this.llmManager.model})`;
+        badge.style.backgroundColor = 'var(--secondary-light)';
+        badge.style.color = 'var(--secondary)';
+      } else {
+        badge.textContent = 'Gemini (Requer Chave)';
+        badge.style.backgroundColor = 'var(--danger-light)';
+        badge.style.color = 'var(--danger)';
+      }
+    } else if (mode === 'webllm') {
+      badge.textContent = 'WebLLM Local';
+      badge.style.backgroundColor = '';
+      badge.style.color = '';
+    } else {
+      badge.textContent = 'Modo Offline (C)';
+      badge.style.backgroundColor = '';
+      badge.style.color = '';
+    }
+  }
+
   showWelcomeMessage() {
-    const welcome = `🍱 *Bem-vindo à Marmitaria Sabor de Casa!*\n\nSou seu atendente virtual inteligente. Você pode pedir qualquer prato do dia em linguagem natural, personalizar ingredientes e fechar sua entrega!\n\n💡 *Exemplo:* "Quero 1 bife acebolado sem cebola e 1 guaraná gelado".\n\nClique em *Ver Cardápio* ou digite sua escolha para começar:`;
-    this.chatUI.appendBotMessage(welcome);
+    const hasKey = this.llmManager.hasValidKey();
+    if (hasKey) {
+      const welcome = `🍱 *Bem-vindo à Marmitaria Sabor de Casa!*\n\nSou seu atendente virtual inteligente conectado ao **Google Gemini**. Você pode pedir qualquer prato do dia em linguagem natural, personalizar ingredientes e fechar sua entrega!\n\n💡 *Exemplo:* "Quero 1 bife acebolado sem cebola e 1 guaraná gelado".\n\nClique em *Ver Cardápio* ou digite sua escolha para começar:`;
+      this.chatUI.appendBotMessage(welcome);
+    } else {
+      const welcome = `🍱 *Bem-vindo à Marmitaria Sabor de Casa!*\n\n🔑 **Chave de API do Gemini Obrigatória:**\nPara que o chatbot inteligente funcione, informe sua chave de API nas **Configurações (⚙️)** no topo ou no modal que foi aberto.\n\nSua chave fica protegida na sessão do seu navegador (100% *client-side*).`;
+      this.chatUI.appendBotMessage(welcome);
+    }
   }
 
   /* ==========================================================================
@@ -414,6 +458,7 @@ class App {
           this.cartStore.clearCart();
           this.agent.clearHistory();
           document.getElementById('api-key-input').value = '';
+          this.updateHeaderBadge();
           alert('Dados limpos com sucesso.');
           if (modalSettings) modalSettings.style.display = 'none';
         }
@@ -496,19 +541,14 @@ class App {
     this.llmManager.setModel(model);
 
     // Atualiza badge de modo no header
-    const badge = document.getElementById('header-mode-badge');
-    if (badge) {
-      if (chosenMode === 'gemini') {
-        badge.textContent = `Gemini (${model})`;
-      } else if (chosenMode === 'webllm') {
-        badge.textContent = 'WebLLM Local';
-      } else {
-        badge.textContent = 'Modo Offline (C)';
-      }
-    }
+    this.updateHeaderBadge();
 
     modal.style.display = 'none';
-    this.chatUI.appendSystemNotice(`Configurações salvas: Modo ${chosenMode.toUpperCase()} ativado.`);
+    if (this.llmManager.hasValidKey()) {
+      this.chatUI.appendSystemNotice(`Configurações salvas: Chave de API ativada para o modelo ${model}. O chatbot está pronto para responder via IA!`);
+    } else {
+      this.chatUI.appendSystemNotice(`Configurações salvas. Atenção: nenhuma chave de API válida foi detectada. Informe sua chave para iniciar as mensagens.`);
+    }
   }
 
   openDeliveryModal() {
