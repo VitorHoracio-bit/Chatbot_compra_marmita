@@ -25,8 +25,9 @@
   "default_llm_mode": "gemini",
   "require_api_key": true,
   "available_models": [
-    "gemini-2.0-flash",
     "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
     "gemini-1.5-pro"
   ]
 }

@@ -83,17 +83,22 @@ export class GeminiProvider {
       clearTimeout(timeoutId);
 
       if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const detailedMsg = errData.error?.message ? ` (${errData.error.message})` : '';
+
         if (res.status === 400) {
-          const errData = await res.json().catch(() => ({}));
           throw new Error(`Erro na requisição à API Gemini: ${errData.error?.message || 'Parâmetros inválidos.'}`);
         }
         if (res.status === 401 || res.status === 403) {
-          throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique se a chave em Configurações está correta.');
+          throw new Error(`Chave de API do Gemini inválida ou não autorizada${detailedMsg}. Verifique se a chave em Configurações está correta.`);
+        }
+        if (res.status === 404) {
+          throw new Error(`Modelo "${this.model}" não encontrado ou indisponível na API (404)${detailedMsg}. Tente selecionar outro modelo nas Configurações (ex: gemini-1.5-flash ou gemini-2.5-flash).`);
         }
         if (res.status === 429) {
-          throw new Error('Limite de taxa/cota excedido na API Gemini. Recomendamos alternar temporariamente para o Modo Offline.');
+          throw new Error(`Limite de taxa/cota excedido na API Gemini${detailedMsg}. Recomendamos aguardar um momento.`);
         }
-        throw new Error(`Erro HTTP ${res.status} ao contatar a API Gemini.`);
+        throw new Error(`Erro HTTP ${res.status} ao contatar a API Gemini${detailedMsg}.`);
       }
 
       const jsonResponse = await res.json();
