@@ -17,7 +17,7 @@ export class LLMProviderManager {
     this.initialConfig = initialConfig;
     this.requireApiKey = initialConfig.require_api_key ?? false;
     this.mode = initialConfig.default_llm_mode || 'offline'; // 'offline' | 'gemini' | 'webllm'
-    this.model = 'gemini-1.5-flash';
+    this.model = 'gemini-flash-latest';
     this.apiKey = this.loadStoredApiKey();
 
     this.offlineProvider = new OfflineProvider(cartStore);

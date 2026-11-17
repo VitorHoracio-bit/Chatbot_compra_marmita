@@ -34,8 +34,6 @@ export class GeminiProvider {
       throw new Error('Sem conexão com a internet. Verifique sua rede ou ative o Modo Offline.');
     }
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
-
     // Monta o payload
     const contents = [];
 
@@ -67,54 +65,83 @@ export class GeminiProvider {
       }
     };
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    // Tenta primeiro o modelo configurado e, se der 404, faz fallback automático para modelos conhecidos ativos
+    const modelsToTry = [
+      this.model,
+      'gemini-flash-latest',
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash'
+    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+    let lastError = null;
 
-      clearTimeout(timeoutId);
+    for (const currentModel of modelsToTry) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        const detailedMsg = errData.error?.message ? ` (${errData.error.message})` : '';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
-        if (res.status === 400) {
-          throw new Error(`Erro na requisição à API Gemini: ${errData.error?.message || 'Parâmetros inválidos.'}`);
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const detailedMsg = errData.error?.message ? ` (${errData.error.message})` : '';
+
+          if (res.status === 404) {
+            // Modelo não encontrado para esta versão/chave; tenta o próximo candidato da lista
+            console.warn(`Modelo ${currentModel} retornou 404 na API Gemini. Tentando próximo modelo...`);
+            lastError = new Error(`Modelo "${currentModel}" não encontrado na API Gemini (404)${detailedMsg}.`);
+            continue;
+          }
+
+          if (res.status === 400) {
+            throw new Error(`Erro na requisição à API Gemini: ${errData.error?.message || 'Parâmetros inválidos.'}`);
+          }
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`Chave de API do Gemini inválida ou não autorizada${detailedMsg}. Verifique sua chave nas Configurações.`);
+          }
+          if (res.status === 429) {
+            throw new Error(`Limite de taxa/cota excedido na API Gemini${detailedMsg}.`);
+          }
+          throw new Error(`Erro HTTP ${res.status} ao contatar a API Gemini${detailedMsg}.`);
         }
-        if (res.status === 401 || res.status === 403) {
-          throw new Error(`Chave de API do Gemini inválida ou não autorizada${detailedMsg}. Verifique se a chave em Configurações está correta.`);
+
+        const jsonResponse = await res.json();
+        const candidateText = jsonResponse.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!candidateText) {
+          throw new Error('A API Gemini não retornou nenhum conteúdo válido.');
         }
-        if (res.status === 404) {
-          throw new Error(`Modelo "${this.model}" não encontrado ou indisponível na API (404)${detailedMsg}. Tente selecionar outro modelo nas Configurações (ex: gemini-1.5-flash ou gemini-2.5-flash).`);
+
+        // Se encontrou um modelo que funcionou, atualiza this.model para as próximas chamadas
+        this.model = currentModel;
+        return JSON.parse(candidateText);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error('Tempo limite de resposta esgotado (timeout de 15s). Tente novamente.');
         }
-        if (res.status === 429) {
-          throw new Error(`Limite de taxa/cota excedido na API Gemini${detailedMsg}. Recomendamos aguardar um momento.`);
+        if (err.message && err.message.includes('404')) {
+          lastError = err;
+          continue;
         }
-        throw new Error(`Erro HTTP ${res.status} ao contatar a API Gemini${detailedMsg}.`);
+        throw err;
       }
-
-      const jsonResponse = await res.json();
-      const candidateText = jsonResponse.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!candidateText) {
-        throw new Error('A API Gemini não retornou nenhum conteúdo válido.');
-      }
-
-      return JSON.parse(candidateText);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error('Tempo limite de resposta esgotado (timeout de 15s). Tente novamente ou use o Modo Offline.');
-      }
-      throw err;
     }
+
+    throw lastError || new Error('Nenhum dos modelos disponíveis da API Gemini respondeu com sucesso.');
   }
 }
