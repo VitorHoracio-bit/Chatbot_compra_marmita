@@ -1,5 +1,6 @@
 import { pricingSuite } from './pricing.test.js';
 import { cartSuite } from './cart.test.js';
+import { customizationSuite } from './customization.test.js';
 import { guardrailsSuite } from './guardrails.test.js';
 import { redteamSuite } from './redteam.test.js';
 import { agentSuite } from './agent.test.js';
@@ -9,7 +10,7 @@ async function runAll() {
   console.log('   EXECUTANDO SUÍTE COMPLETA DE TESTES');
   console.log('=============================================\n');
 
-  const suites = [pricingSuite, cartSuite, guardrailsSuite, redteamSuite, agentSuite];
+  const suites = [pricingSuite, cartSuite, customizationSuite, guardrailsSuite, redteamSuite, agentSuite];
   let totalTests = 0;
   let totalPassed = 0;
   let totalFailed = 0;

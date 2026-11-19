@@ -186,19 +186,55 @@ cartSuite.test('Confirmacao de pedido bloqueia carrinho vazio ou sem endereco e 
   assert(resConfirmado.orderText.includes('Bife de Alcatra Acebolado'), 'Texto deve conter os itens');
 });
 
-cartSuite.test('Subtracao automatica do estoque do cardapio ao confirmar pedido com sucesso', () => {
-  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado tem estoque 5
+cartSuite.test('Subtracao automatica do estoque do cardapio ao adicionar item e retencao na confirmacao', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado tem estoque inicial 5
+  const itemInicial = cart.findMenuItem('bife-acebolado');
+  assertEqual(itemInicial.estoque_do_dia, 5);
+
+  // Adiciona 2 unidades: estoque passa imediatamente de 5 para 3
   cart.addItem({ itemId: 'bife-acebolado', quantidade: 2 });
+  const itemAposAdicionar = cart.findMenuItem('bife-acebolado');
+  assertEqual(itemAposAdicionar.estoque_do_dia, 3, 'Estoque deve ser reduzido de 5 para 3 imediatamente ao adicionar');
+
+  // Ao confirmar, o estoque se mantem em 3 (sem subtracao duplicada)
   cart.setDelivery('Centro', 'Rua das Flores, 123');
-
-  const itemAntes = cart.findMenuItem('bife-acebolado');
-  assertEqual(itemAntes.estoque_do_dia, 5);
-
   const res = cart.confirmOrder();
   assert(res.success);
 
   const itemDepois = cart.findMenuItem('bife-acebolado');
-  assertEqual(itemDepois.estoque_do_dia, 3, 'Estoque deve ser reduzido de 5 para 3');
+  assertEqual(itemDepois.estoque_do_dia, 3, 'Estoque deve permanecer 3 apos confirmacao');
+});
+
+cartSuite.test('Cancelamento de pedido devolve estoque automaticamente de forma idempotente', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado tem estoque inicial 5
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 3 });
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 2, 'Estoque deve cair para 2');
+
+  // Cancelamento devolve os 3 itens ao estoque
+  const resCancel = cart.cancelOrder();
+  assert(resCancel.success);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5, 'Estoque deve retornar para 5');
+  assertEqual(cart.items.length, 0, 'Carrinho deve ser esvaziado');
+  assertEqual(cart.status, 'cancelado');
+
+  // Segundo cancelamento deve ser idempotente (sem devolucao duplicada)
+  const resCancel2 = cart.cancelOrder();
+  assert(resCancel2.success);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5, 'Estoque deve continuar 5 sem duplicidade');
+});
+
+cartSuite.test('Remover item e esvaziar carrinho devolve estoque reservado', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // bife-acebolado: 5
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 4 });
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 1);
+
+  // Remove 2 unidades
+  cart.removeItem('bife-acebolado', 2);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 3, 'Devolve 2 unidades ao estoque');
+
+  // Limpa carrinho
+  cart.clearCart();
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5, 'Estoque retorna totalmente para 5');
 });
 
 cartSuite.test('Esgotamento de estoque ao confirmar e rejeicao de novas adicoes', () => {
@@ -217,4 +253,160 @@ cartSuite.test('Esgotamento de estoque ao confirmar e rejeicao de novas adicoes'
   const resNovo = cart.addItem({ itemId: 'bife-acebolado', quantidade: 1 });
   assert(!resNovo.success, 'Nao deve permitir adicionar item com estoque esgotado');
   assert(resNovo.message.includes('esgotado') || resNovo.message.includes('não está disponível'));
+});
+
+cartSuite.test('Atualizar personalizacao mantem estoque e mescla linhas identicas', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['sem cebola'] });
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['ao ponto'] });
+
+  const firstLine = cart.items[0];
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 3);
+
+  // Muda a primeira linha para a mesma configuracao da segunda: devem fundir.
+  const res = cart.updateItemCustomization(firstLine.line_key, ['ao ponto'], '');
+  assert(res.success);
+  assertEqual(cart.items.length, 1, 'Configuracoes identicas devem virar uma linha');
+  assertEqual(cart.items[0].quantidade, 2);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 3, 'Estoque nao muda ao editar');
+});
+
+cartSuite.test('Edicao de personalizacao rejeita opcoes invalidas sem perder o estoque', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['sem cebola'] });
+  const lineKey = cart.items[0].line_key;
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 4);
+
+  const res = cart.updateItemCustomization(lineKey, ['bem passado', 'troque por lagosta'], '');
+  assert(res.success);
+  assert(res.rejectedCustomizations.includes('troque por lagosta'));
+  assertEqual(cart.items[0].personalizacoes.length, 1);
+  assertEqual(cart.items[0].personalizacoes[0], 'bem passado');
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 4);
+});
+
+cartSuite.test('Varias configuracoes exigem escolha explicita da linha', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['sem cebola'] });
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['ao ponto'] });
+
+  const upd = cart.updateQuantity('bife-acebolado', 2);
+  assert(upd.requiresLineSelection, 'Alteracao sem lineKey deve pedir selecao');
+  assertEqual(cart.items.length, 2, 'Nada deve ser alterado antes da escolha');
+
+  const rem = cart.removeItem('bife-acebolado', 1);
+  assert(rem.requiresLineSelection, 'Remocao sem lineKey deve pedir selecao');
+
+  const target = cart.items.find(i => i.personalizacoes.includes('ao ponto'));
+  const remLine = cart.removeItem('bife-acebolado', null, target.line_key);
+  assert(remLine.success);
+  assertEqual(cart.items.length, 1);
+  assertEqual(cart.items[0].personalizacoes[0], 'sem cebola');
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 4);
+
+  const updLine = cart.updateQuantity('bife-acebolado', 3, cart.items[0].line_key);
+  assert(updLine.success);
+  assertEqual(cart.items[0].quantidade, 3);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 2);
+});
+
+cartSuite.test('Limite por item considera a soma de todas as configuracoes', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda'); // max_qty_per_item = 5
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 3 });
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 2, personalizacoes: ['sem cebola'] });
+  assertEqual(cart.items.length, 2);
+
+  const extra = cart.addItem({ itemId: 'bife-acebolado', quantidade: 1, personalizacoes: ['ao ponto'] });
+  assert(!extra.success, 'Nao deve passar do limite somando configuracoes');
+
+  const firstLine = cart.items.find(i => i.personalizacoes.length === 0);
+  const upd = cart.updateQuantity('bife-acebolado', 4, firstLine.line_key);
+  assert(!upd.success, 'Alteracao tambem deve respeitar o limite somado');
+  assertEqual(firstLine.quantidade, 3);
+});
+
+cartSuite.test('Confirmacao duplicada nao cria historico duplicado', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+
+  const first = cart.confirmOrder();
+  assert(first.success);
+  assertEqual(cart.orderHistory.length, 1);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 4);
+
+  const second = cart.confirmOrder();
+  assert(!second.success);
+  assert(second.alreadyConfirmed);
+  assertEqual(cart.orderHistory.length, 1, 'Nao deve registrar o mesmo pedido duas vezes');
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 4);
+});
+
+cartSuite.test('Cancelar pedido confirmado devolve estoque uma unica vez e atualiza historico', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 2 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+  const confirmed = cart.confirmOrder();
+  assert(confirmed.success);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 3);
+
+  const cancel = cart.cancelOrder();
+  assert(cancel.success);
+  assertEqual(cart.status, 'cancelado');
+  assertEqual(cart.items.length, 0);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5, 'Devolve as 2 unidades reservadas');
+  assertEqual(cart.orderHistory.length, 1, 'Atualiza o pedido existente, sem duplicar');
+  assertEqual(cart.orderHistory[0].status, 'cancelado');
+  assertEqual(cart.orderHistory[0].stockReturned, true);
+
+  const cancelAgain = cart.cancelOrder();
+  assert(cancelAgain.success);
+  assert(cancelAgain.alreadyCancelled);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5, 'Nao devolve duas vezes');
+});
+
+cartSuite.test('Novo pedido apos confirmacao preserva o historico anterior', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 1 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+  cart.confirmOrder();
+  assertEqual(cart.status, 'confirmado');
+  assertEqual(cart.orderHistory.length, 1);
+
+  const newAdd = cart.addItem({ itemId: 'guarana-lata', quantidade: 1 });
+  assert(newAdd.success);
+  assertEqual(cart.status, 'montando');
+  assertEqual(cart.items.length, 1);
+  assertEqual(cart.orderHistory.length, 1, 'Pedido anterior permanece no historico');
+  assertEqual(cart.findMenuItem('guarana-lata').estoque_do_dia, 19);
+});
+
+cartSuite.test('Reset de sessao restaura estoque, historico e estado inicial', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 2 });
+  cart.setDelivery('Centro', 'Rua das Flores, 123');
+  cart.confirmOrder();
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 3);
+
+  cart.resetSession();
+  assertEqual(cart.items.length, 0);
+  assertEqual(cart.orderHistory.length, 0);
+  assertEqual(cart.status, 'montando');
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 5);
+});
+
+cartSuite.test('Disponibilidade reage imediatamente ao esgotar e ao devolver estoque', () => {
+  const cart = new CartStore(mockMenu, mockConfig, 'segunda');
+  cart.addItem({ itemId: 'bife-acebolado', quantidade: 5 });
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 0);
+  assertEqual(cart.findMenuItem('bife-acebolado').disponivel_hoje, false);
+
+  const todayItems = cart.getMenuItemsForToday();
+  const bife = todayItems.find(i => i.id === 'bife-acebolado');
+  assert(bife && bife.disponivel_hoje === false, 'Cardapio deve refletir esgotamento');
+
+  const lineKey = cart.items[0].line_key;
+  cart.updateQuantity('bife-acebolado', 4, lineKey);
+  assertEqual(cart.findMenuItem('bife-acebolado').estoque_do_dia, 1);
+  assertEqual(cart.findMenuItem('bife-acebolado').disponivel_hoje, true);
 });

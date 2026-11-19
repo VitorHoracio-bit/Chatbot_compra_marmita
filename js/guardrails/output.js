@@ -1,12 +1,13 @@
 /**
- * Guardrail de Saida (Pos-LLM)
- * Valida a resposta do LLM, rejeita schemas invalidos, verifica coerencia de precos,
- * previne vazamento do system prompt e assegura limites de negocio.
+ * Guardrail e Sanitizador de Saída
+ * Valida a integridade da intenção, itens e mensagens do motor de diálogo,
+ * impedindo termos indevidos, vazamentos e garantindo coerência de dados com o cardápio.
  */
 
 import { normalizeString } from '../cart/pricing.js';
+import { validateCustomizations, validateObservation } from '../utils/customizationHelper.js';
 
-// Lista de intencoes permitidas pelo agente
+// Lista de intenções válidas e suportadas
 export const VALID_INTENTS = [
   'listar_cardapio',
   'adicionar_item',
@@ -21,7 +22,7 @@ export const VALID_INTENTS = [
   'esclarecer_ambiguidade'
 ];
 
-// Frases e termos criticos do system prompt que nunca devem vazar para o usuario
+// Frases e termos críticos de injeção ou vazamento que nunca devem vazar para o usuário
 const PROMPT_LEAK_PHRASES = [
   'dado nao confiavel',
   'dado não confiável',
@@ -43,223 +44,184 @@ const PROMPT_LEAK_PHRASES = [
 ];
 
 /**
- * Detecta se a mensagem gerada contem trechos internos do prompt do sistema.
+ * Detecta se a mensagem gerada contém trechos internos de prompt ou termos de vazamento.
  * @param {string} text
  * @returns {boolean}
  */
 export function detectPromptLeakage(text) {
-  if (!text || typeof text !== 'string') return false;
+  if (typeof text !== 'string') return false;
   const norm = normalizeString(text);
-  for (const phrase of PROMPT_LEAK_PHRASES) {
-    if (norm.includes(normalizeString(phrase))) {
-      return true;
-    }
-  }
-  return false;
+  return PROMPT_LEAK_PHRASES.some(phrase => norm.includes(normalizeString(phrase)));
 }
 
 /**
- * Detecta se a resposta do modelo tenta oferecer descontos, precos zerados ou beneficios nao autorizados.
+ * Detecta promessas não autorizadas de descontos, gratuidade ou promoções inventadas.
  * @param {string} text
  * @returns {boolean}
  */
 export function detectUnauthorizedOffers(text) {
-  if (!text || typeof text !== 'string') return false;
-  const patterns = [
-    /desconto\s+(especial|de\s+\d+|exclusivo|cortesia)/i,
-    /sai(u)?\s+(de\s+gra[çc]a|gr[áa]tis|0\s+reais)/i,
-    /sem\s+custo\s+algum/i,
-    /pre[çc]o\s+zerado/i,
-    /cupom\s+aplicado/i,
-    /promo[çc][ãa]o\s+secreta/i
+  if (typeof text !== 'string') return false;
+  const norm = normalizeString(text);
+  const forbidden = [
+    'desconto de', 'cupom de', 'sai de graca', 'sai de graça', 'de graca', 'de graça',
+    'sem pagar nada', 'preco zero', 'preço zero', 'cortesia por minha conta',
+    'vou te dar um desconto', 'te dou de graca', 'te dou de graça'
   ];
-  return patterns.some(p => p.test(text));
+  return forbidden.some(term => norm.includes(normalizeString(term)));
 }
 
 /**
- * Detecta se a mensagem do LLM respondeu a questoes fora do escopo do restaurante
- * (ex.: gerou codigo, conselhos medicos/juridicos, opiniao politica).
+ * Detecta respostas fora de escopo (geração de código, aconselhamento médico, etc.)
  * @param {string} text
  * @returns {boolean}
  */
 export function detectOutOfScopeResponse(text) {
-  if (!text || typeof text !== 'string') return false;
-  const patterns = [
-    /```(python|javascript|js|ts|html|css|bash|sh|c|cpp|sql)/i,
-    /function\s+\w+\(/i,
-    /def\s+\w+\(/i,
-    /const\s+\w+\s*=/i,
-    /partido\s+pol[íi]tico|elei[çc][õo]es|candidato/i,
-    /diagn[óo]stico\s+m[ée]dico|receita\s+m[ée]dica|rem[ée]dio\s+tarja/i
+  if (typeof text !== 'string') return false;
+  const norm = normalizeString(text);
+  const outOfScopePatterns = [
+    /```(python|javascript|bash|sh|php|java|c|cpp|sql|html)/i,
+    /\bdef\s+[a-zA-Z_]\w*\s*\(/i,
+    /\bfunction\s+[a-zA-Z_]\w*\s*\(/i,
+    /\bimport\s+[a-zA-Z_]/i,
+    /remédio|remedio|tarja preta|prescrição|prescricao|posologia|diagnóstico|diagnostico médico/,
+    /eleição|eleicao|voto|partido político|candidato a presidente/
   ];
-  return patterns.some(p => p.test(text));
+  return outOfScopePatterns.some(pattern => pattern.test(norm) || pattern.test(text));
 }
 
 /**
- * Valida a estrutura JSON bruta retornada pelo LLM.
- * Rejeita campos nao permitidos e valida tipos basicos.
- * @param {any} rawOutput
- * @returns {{ valid: boolean, parsed?: object, error?: string }}
+ * Validador de formato de objeto de diálogo.
+ * @param {string|object} output
+ * @returns {{ valid: boolean, parsed?: object, reason?: string }}
  */
-export function validateLLMJsonSchema(rawOutput) {
-  let parsed = rawOutput;
-
-  if (typeof rawOutput === 'string') {
+export function validateLLMJsonSchema(output) {
+  let obj = output;
+  if (typeof output === 'string') {
     try {
-      // Tenta remover delimitadores de markdown caso o LLM os envie
-      const cleaned = rawOutput
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
-      parsed = JSON.parse(cleaned);
-    } catch (e) {
-      return {
-        valid: false,
-        error: `JSON malformado retornado pelo LLM: ${e.message}`
-      };
+      obj = JSON.parse(output);
+    } catch (_) {
+      return { valid: false, reason: 'json_parse_error' };
     }
   }
 
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return {
-      valid: false,
-      error: 'A saída do LLM deve ser um objeto JSON no nível raiz.'
-    };
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return { valid: false, reason: 'not_an_object' };
   }
 
-  // Valida campo 'intent'
-  if (!parsed.intent || typeof parsed.intent !== 'string') {
-    return {
-      valid: false,
-      error: 'Campo "intent" é obrigatório e deve ser uma string.'
-    };
+  if (!obj.intent || !VALID_INTENTS.includes(obj.intent)) {
+    return { valid: false, reason: 'invalid_intent' };
   }
 
-  if (!VALID_INTENTS.includes(parsed.intent)) {
-    return {
-      valid: false,
-      error: `Intenção desconhecida: "${parsed.intent}". Permitidas: ${VALID_INTENTS.join(', ')}`
-    };
+  if (obj.items !== undefined && !Array.isArray(obj.items)) {
+    return { valid: false, reason: 'items_not_array' };
   }
 
-  // Valida campo 'items' se presente
-  if (parsed.items !== undefined) {
-    if (!Array.isArray(parsed.items)) {
-      return {
-        valid: false,
-        error: 'Campo "items" deve ser um array.'
-      };
-    }
-
-    for (let i = 0; i < parsed.items.length; i++) {
-      const it = parsed.items[i];
-      if (!it || typeof it !== 'object') {
-        return { valid: false, error: `Item no índice ${i} deve ser um objeto.` };
-      }
-      if (!it.id || typeof it.id !== 'string') {
-        return { valid: false, error: `Item no índice ${i} deve ter "id" em formato string.` };
-      }
-      if (it.quantidade !== undefined && (typeof it.quantidade !== 'number' || it.quantidade <= 0)) {
-        return { valid: false, error: `Item "${it.id}" tem quantidade inválida: ${it.quantidade}` };
-      }
-      if (it.personalizacoes !== undefined && !Array.isArray(it.personalizacoes)) {
-        return { valid: false, error: `Item "${it.id}" tem campo "personalizacoes" não-array.` };
-      }
-    }
-  }
-
-  // Valida campo 'delivery' se presente
-  if (parsed.delivery !== undefined && (typeof parsed.delivery !== 'object' || parsed.delivery === null)) {
-    return {
-      valid: false,
-      error: 'Campo "delivery" deve ser um objeto.'
-    };
-  }
-
-  // Valida campo 'mensagem_ao_usuario'
-  if (parsed.mensagem_ao_usuario !== undefined && typeof parsed.mensagem_ao_usuario !== 'string') {
-    return {
-      valid: false,
-      error: 'Campo "mensagem_ao_usuario" deve ser uma string.'
-    };
-  }
-
-  return {
-    valid: true,
-    parsed
-  };
+  return { valid: true, parsed: obj };
 }
 
 /**
- * Valida a saida completa do LLM aplicando todas as camadas do Guardrail de Saida.
- * Se houver violacao, descarta o texto livre do LLM e aplica resposta de fallback segura.
- * @param {any} rawOutput
- * @param {object} cartStore Instancia da loja para validacao de regras deterministica
- * @returns {{ safe: boolean, output: object, sanitizedMessage: string, reason?: string }}
+ * Valida e sanitiza o objeto de resposta gerado pelo motor de diálogo.
+ * @param {object} rawOutput
+ * @param {object} cartStore
+ * @returns {{ output: object, sanitizedMessage: string, safe: boolean, reason?: string }}
  */
-export function validateAndSanitizeLLMOutput(rawOutput, cartStore) {
-  const schemaResult = validateLLMJsonSchema(rawOutput);
-  if (!schemaResult.valid) {
+export function validateAndSanitizeOutput(rawOutput, cartStore) {
+  if (!rawOutput || typeof rawOutput !== 'object') {
     return {
+      output: { intent: 'tirar_duvida', mensagem_ao_usuario: 'Como posso te ajudar hoje?' },
+      sanitizedMessage: 'Como posso te ajudar hoje?',
       safe: false,
-      output: { intent: 'fora_de_escopo' },
-      sanitizedMessage: 'Desculpe, tive uma oscilação na resposta. Pode repetir seu pedido ou escolher uma das opções?',
-      reason: schemaResult.error
+      reason: 'Resposta nula ou inválida.'
     };
   }
 
-  const data = schemaResult.parsed;
-  let userMsg = data.mensagem_ao_usuario || '';
+  const schemaCheck = validateLLMJsonSchema(rawOutput);
+  let intent = schemaCheck.valid ? rawOutput.intent : 'tirar_duvida';
 
-  // 1. Deteccao de vazamento do prompt do sistema
-  if (detectPromptLeakage(userMsg)) {
+  let message = typeof rawOutput.mensagem_ao_usuario === 'string'
+    ? rawOutput.mensagem_ao_usuario.trim()
+    : 'Como posso te ajudar com o seu pedido?';
+
+  // Sanitiza remoção de tags de injeção ou HTML acidental
+  message = message.replace(/<[^>]*>/g, '').trim();
+
+  // Verifica vazamentos de prompt
+  if (detectPromptLeakage(message)) {
     return {
+      output: { intent: 'tirar_duvida', mensagem_ao_usuario: 'Como posso te ajudar com seu pedido hoje?' },
+      sanitizedMessage: 'Como posso te ajudar com seu pedido hoje?',
       safe: false,
-      output: { intent: 'fora_de_escopo' },
-      sanitizedMessage: 'Olá! Sou o atendente virtual da Marmitaria Sabor de Casa. Como posso ajudar com o seu pedido hoje?',
-      reason: 'prompt_leakage_detected'
+      reason: 'prompt_leak_detected'
     };
   }
 
-  // 2. Deteccao de promessas de precos/descontos nao autorizados pelo LLM
-  if (detectUnauthorizedOffers(userMsg)) {
+  // Verifica ofertas não autorizadas
+  if (detectUnauthorizedOffers(message)) {
     return {
+      output: { intent: 'tirar_duvida', mensagem_ao_usuario: 'Consulte os preços oficiais no nosso cardápio.' },
+      sanitizedMessage: 'Consulte os preços oficiais no nosso cardápio.',
       safe: false,
-      output: { intent: data.intent, items: data.items, delivery: data.delivery },
-      sanitizedMessage: 'Aqui na Marmitaria nossos preços e condições seguem estritamente nossa tabela oficial. Como gostaria de prosseguir?',
-      reason: 'unauthorized_pricing_claim'
+      reason: 'unauthorized_offer_detected'
     };
   }
 
-  // 3. Deteccao de resposta fora de escopo (codigo, polui, etc.)
-  if (detectOutOfScopeResponse(userMsg) || data.intent === 'fora_de_escopo') {
+  // Verifica saídas fora de escopo
+  if (detectOutOfScopeResponse(message)) {
     return {
-      safe: true,
-      output: { intent: 'fora_de_escopo' },
-      sanitizedMessage: 'Meu foco é somente ajudar você a escolher as melhores marmitas e acompanhar seu pedido! Deseja ver o cardápio de hoje?',
-      reason: 'out_of_scope'
+      output: { intent: 'fora_de_escopo', mensagem_ao_usuario: 'Só posso atender pedidos da Marmitaria.' },
+      sanitizedMessage: 'Só posso atender pedidos da Marmitaria.',
+      safe: false,
+      reason: 'out_of_scope_detected'
     };
   }
 
-  // 4. Verificacao de IDs de itens e disponibilidade
-  if (Array.isArray(data.items) && cartStore) {
-    for (const it of data.items) {
-      const found = cartStore.findMenuItem(it.id);
-      if (!found) {
-        // Se o LLM alucinou um ID, corrige ou avisa
-        return {
-          safe: true,
-          output: { ...data, items: [] },
-          sanitizedMessage: `O prato "${it.id}" não consta em nosso cardápio. Gostaria de ver as opções disponíveis hoje?`,
-          reason: 'hallucinated_item_id'
-        };
-      }
+  // Validação dos itens referenciados na ação
+  const sanitizedItems = [];
+  if (Array.isArray(rawOutput.items) && cartStore) {
+    for (const item of rawOutput.items) {
+      if (!item || typeof item.id !== 'string') continue;
+
+      const menuItem = typeof cartStore.getItemById === 'function'
+        ? cartStore.getItemById(item.id)
+        : cartStore.findMenuItem(item.id);
+
+      if (!menuItem) continue;
+
+      let qtd = parseInt(item.quantidade, 10);
+      if (isNaN(qtd) || qtd < 1) qtd = 1;
+
+      // Filtra personalizacoes permitidas usando a mesma regra central do
+      // CartStore (normalizacao de acentos/caixa e conflitos).
+      const { validCustomizations } = validateCustomizations(menuItem, item.personalizacoes);
+
+      // Sanitiza observação com a mesma regra central e limite configurado.
+      const obsLimit = cartStore?.configData?.limits?.max_obs_length ?? 140;
+      const obsValidation = validateObservation(item.observacoes, obsLimit);
+      const obs = obsValidation.sanitized;
+
+      sanitizedItems.push({
+        id: menuItem.id,
+        nome: menuItem.nome,
+        preco_unitario: menuItem.preco_unitario,
+        quantidade: qtd,
+        personalizacoes: validCustomizations,
+        observacoes: obs
+      });
     }
   }
 
   return {
-    safe: true,
-    output: data,
-    sanitizedMessage: userMsg
+    output: {
+      intent,
+      items: sanitizedItems,
+      delivery: rawOutput.delivery,
+      termo_ambiguo: rawOutput.termo_ambiguo,
+      mensagem_ao_usuario: message
+    },
+    sanitizedMessage: message,
+    safe: true
   };
 }
+
+// Alias para compatibilidade com suítes de teste legadas
+export const validateAndSanitizeLLMOutput = validateAndSanitizeOutput;

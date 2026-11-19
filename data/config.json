@@ -1,18 +1,42 @@
 {
-  "restaurant_name": "Marmitaria Sabor de Casa",
-  "whatsapp_number": "5511999999999",
+  "restaurant_name": "Marmitaria Sabor de Casa - Itajubá",
+  "whatsapp_number": "5535999999999",
   "currency": "BRL",
   "timezone": "America/Sao_Paulo",
   "delivery": {
     "default_fee": 700,
     "free_delivery_threshold": 6000,
     "neighborhoods": [
-      { "name": "Centro", "aliases": ["centro", "se", "republica"], "fee": 500 },
-      { "name": "Jardim Paulista", "aliases": ["jardim paulista", "paulista", "cerqueira cesar"], "fee": 700 },
-      { "name": "Vila Mariana", "aliases": ["vila mariana", "mariana", "ana rosa"], "fee": 800 },
-      { "name": "Pinheiros", "aliases": ["pinheiros", "vila madalena"], "fee": 900 },
-      { "name": "Moema", "aliases": ["moema", "ibirapuera"], "fee": 1000 },
-      { "name": "Outros Bairros", "aliases": ["outros", "outro"], "fee": 1200 }
+      { "name": "Centro", "aliases": ["centro", "praca theodomiro santiago", "centro itajuba"], "fee": 500 },
+      { "name": "Açude", "aliases": ["acude", "bairro do acude"], "fee": 800 },
+      { "name": "Anhumas", "aliases": ["anhumas", "bairro anhumas"], "fee": 1000 },
+      { "name": "Boa Vista", "aliases": ["boa vista", "bairro boa vista"], "fee": 600 },
+      { "name": "Cruzeiro", "aliases": ["cruzeiro", "bairro cruzeiro"], "fee": 700 },
+      { "name": "Distrito Industrial", "aliases": ["distrito industrial", "distrito", "industrial"], "fee": 900 },
+      { "name": "Imbel", "aliases": ["imbel", "vila imbel"], "fee": 900 },
+      { "name": "Jardim Bela Vista", "aliases": ["jardim bela vista", "bela vista"], "fee": 700 },
+      { "name": "Jardim das Colinas", "aliases": ["jardim das colinas", "colinas"], "fee": 700 },
+      { "name": "Jardim Eldorado", "aliases": ["jardim eldorado", "eldorado"], "fee": 700 },
+      { "name": "Medicina", "aliases": ["medicina", "faculdade de medicina", "bairro medicina"], "fee": 600 },
+      { "name": "Morro Chic", "aliases": ["morro chic", "morro chique", "morro chic itajuba"], "fee": 600 },
+      { "name": "Nações", "aliases": ["nacoes", "bairro das nacoes"], "fee": 700 },
+      { "name": "Nossa Senhora de Fátima", "aliases": ["nossa senhora de fatima", "fatima", "bairro de fatima"], "fee": 700 },
+      { "name": "Piedade", "aliases": ["piedade", "bairro da piedade"], "fee": 800 },
+      { "name": "Pinheirinho", "aliases": ["pinheirinho", "bairro pinheirinho"], "fee": 800 },
+      { "name": "Porto Velho", "aliases": ["porto velho", "bairro porto velho"], "fee": 800 },
+      { "name": "Rebourgeon", "aliases": ["rebourgeon", "bairro rebourgeon"], "fee": 800 },
+      { "name": "Santa Luzia", "aliases": ["santa luzia", "bairro santa luzia"], "fee": 700 },
+      { "name": "Santa Rita de Cássia", "aliases": ["santa rita de cassia", "santa rita"], "fee": 700 },
+      { "name": "Santa Rosa", "aliases": ["santa rosa", "bairro santa rosa"], "fee": 700 },
+      { "name": "Santo Antônio", "aliases": ["santo antonio", "bairro santo antonio"], "fee": 800 },
+      { "name": "Santos Dumont", "aliases": ["santos dumont", "bairro santos dumont"], "fee": 700 },
+      { "name": "São Judas Tadeu", "aliases": ["sao judas tadeu", "sao judas"], "fee": 800 },
+      { "name": "São Sebastião", "aliases": ["sao sebastiao", "bairro sao sebastiao"], "fee": 700 },
+      { "name": "São Vicente", "aliases": ["sao vicente", "bairro sao vicente"], "fee": 700 },
+      { "name": "Varginha", "aliases": ["varginha", "bairro varginha"], "fee": 700 },
+      { "name": "Vila Betel", "aliases": ["vila betel", "betel"], "fee": 600 },
+      { "name": "Vila Poddis", "aliases": ["vila poddis", "poddis"], "fee": 600 },
+      { "name": "Outros Bairros (Itajubá)", "aliases": ["outros", "outro", "outros bairros", "zona rural itajuba"], "fee": 1000 }
     ]
   },
   "limits": {
@@ -20,12 +44,6 @@
     "max_qty_per_item": 10,
     "max_input_length": 300,
     "max_obs_length": 140,
-    "rate_limit_per_minute": 10
-  },
-  "default_llm_mode": "offline",
-  "available_models": [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro"
-  ]
+    "rate_limit_per_minute": 20
+  }
 }

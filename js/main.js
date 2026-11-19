@@ -1,13 +1,16 @@
 /**
  * Ponto de Entrada Principal (Main Application Bootstrap)
- * Carrega dados estáticos relativos, inicializa módulos, subscreve eventos
- * e gerencia interface (tema, carrinho, modais e mensagens).
+ * 100% Client-Side, sem dependências de LLMs e sem necessidade de credenciais.
+ * Carrega dados estáticos relativos, inicializa o agente local determinístico,
+ * o carrinho reativo, o monitoramento em tempo real e os componentes de interface.
  */
 
 import { CartStore } from './cart/store.js';
-import { LLMProviderManager } from './llm/provider.js';
 import { MarmitaAgent } from './agent/agent.js';
 import { ChatUI } from './ui/chat.js';
+import { MenuUI } from './ui/menu.js';
+import { MonitorUI } from './ui/monitor-ui.js';
+import { monitorService } from './monitor/monitor.js';
 import { formatCurrency } from './cart/pricing.js';
 
 class App {
@@ -15,9 +18,10 @@ class App {
     this.menuData = null;
     this.configData = null;
     this.cartStore = null;
-    this.llmManager = null;
     this.agent = null;
     this.chatUI = null;
+    this.menuUI = null;
+    this.monitorUI = null;
   }
 
   async init() {
@@ -37,23 +41,29 @@ class App {
       this.menuData = await menuRes.json();
       this.configData = await configRes.json();
 
-      // Inicialização do Estado e Agente
+      // Inicialização do Estado e Agente Local
       this.cartStore = new CartStore(this.menuData, this.configData);
-      this.llmManager = new LLMProviderManager(this.cartStore, this.configData);
-      this.agent = new MarmitaAgent(this.cartStore, this.llmManager, this.configData);
+      this.agent = new MarmitaAgent(this.cartStore, this.configData);
 
       // Setup da UI
       this.setupDOM();
       this.setupTheme();
+      this.setupMenuUI();
       this.setupCartListeners();
       this.setupModals();
       this.setupDaySelector();
+
+      // Inicializa Painel de Monitoramento em Tempo Real
+      this.monitorUI = new MonitorUI();
+      this.monitorUI.init();
 
       // Boas-vindas inicial no chat
       this.showWelcomeMessage();
 
     } catch (err) {
       console.error('Erro na inicialização da aplicação:', err);
+      monitorService.recordError('Inicialização', err);
+
       const container = document.getElementById('chat-messages');
       if (container) {
         const errDiv = document.createElement('div');
@@ -109,8 +119,9 @@ class App {
     if (clearCartBtn) {
       clearCartBtn.addEventListener('click', () => {
         if (confirm('Deseja realmente esvaziar seu carrinho?')) {
-          this.cartStore.clearCart();
-          this.chatUI.appendSystemNotice('Carrinho limpo com sucesso.');
+          const res = this.cartStore.clearCart();
+          this.chatUI.appendSystemNotice(res.message);
+          monitorService.logEvent('cart', 'Carrinho', res.message);
         }
       });
     }
@@ -119,9 +130,27 @@ class App {
     const checkoutBtn = document.getElementById('btn-checkout');
     if (checkoutBtn) {
       checkoutBtn.addEventListener('click', () => {
-        this.openDeliveryModal();
+        const state = this.cartStore.getState();
+        if (state.deliveryComplete) {
+          this.handleUserMessage('Confirmar pedido');
+        } else {
+          this.openDeliveryModal();
+        }
       });
     }
+  }
+
+  setupMenuUI() {
+    this.menuUI = new MenuUI({
+      cartStore: this.cartStore,
+      configData: this.configData,
+      gridElement: document.getElementById('menu-grid'),
+      emptyElement: document.getElementById('menu-empty'),
+      panelElement: document.getElementById('menu-panel'),
+      dayLabelElement: document.getElementById('menu-day-label'),
+      onNotice: (message) => this.chatUI.appendSystemNotice(message)
+    });
+    this.menuUI.init();
   }
 
   async handleUserMessage(userText) {
@@ -146,13 +175,14 @@ class App {
     } catch (err) {
       this.chatUI.hideTyping();
       this.chatUI.appendBotMessage(`Ops! Ocorreu um problema inesperado: ${err.message}.`);
+      monitorService.recordError('Chat', err);
     }
   }
 
   handleQuickAction(action) {
     switch (action) {
       case 'menu':
-        this.handleUserMessage('Ver cardápio de hoje');
+        this.menuUI?.open();
         break;
       case 'cart':
         this.handleUserMessage('Ver meu pedido atual');
@@ -172,7 +202,7 @@ class App {
   }
 
   showWelcomeMessage() {
-    const welcome = `🍱 *Bem-vindo à Marmitaria Sabor de Casa!*\n\nSou seu atendente virtual inteligente. Você pode pedir qualquer prato do dia em linguagem natural, personalizar ingredientes e fechar sua entrega!\n\n💡 *Exemplo:* "Quero 1 bife acebolado sem cebola e 1 guaraná gelado".\n\nClique em *Ver Cardápio* ou digite sua escolha para começar:`;
+    const welcome = `🍱 *Bem-vindo à Marmitaria Sabor de Casa!*\n\nSou seu atendente virtual de vendas. Você pode pedir qualquer marmita do dia em linguagem natural, escolher quantidades, personalizar ingredientes e fechar sua entrega!\n\n💡 *Exemplo:* "Quero 1 bife acebolado sem cebola e 1 guaraná gelado".\n\nClique em *Cardápio* ou digite sua escolha para começar:`;
     this.chatUI.appendBotMessage(welcome);
   }
 
@@ -240,7 +270,7 @@ class App {
       top.appendChild(price);
       card.appendChild(top);
 
-      // Preferencias / Observacoes
+      // Preferências / Observações
       if (item.personalizacoes?.length > 0 || item.observacoes) {
         const meta = document.createElement('div');
         meta.className = 'item-meta';
@@ -268,10 +298,22 @@ class App {
       const stepper = document.createElement('div');
       stepper.className = 'qty-stepper';
 
+      const menuItem = this.cartStore.findMenuItem(item.id);
+      const totalQtyForItem = state.items
+        .filter(line => line.id === item.id)
+        .reduce((sum, line) => sum + line.quantidade, 0);
+      const maxPerItem = this.configData?.limits?.max_qty_per_item ?? 10;
+      const maxOrderItems = this.configData?.limits?.max_items_per_order ?? 20;
+      const atOrderLimit = state.itemCount >= maxOrderItems;
+      const canIncrease = Boolean(menuItem?.disponivel_hoje)
+        && totalQtyForItem < maxPerItem
+        && !atOrderLimit;
+
       const btnMinus = document.createElement('button');
       btnMinus.className = 'btn-qty';
       btnMinus.type = 'button';
       btnMinus.textContent = '-';
+      btnMinus.setAttribute('aria-label', `Diminuir quantidade de ${item.nome}`);
       btnMinus.addEventListener('click', () => {
         this.cartStore.updateQuantity(item.id, item.quantidade - 1, item.line_key);
       });
@@ -284,6 +326,17 @@ class App {
       btnPlus.className = 'btn-qty';
       btnPlus.type = 'button';
       btnPlus.textContent = '+';
+      btnPlus.disabled = !canIncrease;
+      btnPlus.setAttribute('aria-label', `Aumentar quantidade de ${item.nome}`);
+      if (!canIncrease) {
+        if (!menuItem?.disponivel_hoje) {
+          btnPlus.title = 'Item esgotado hoje';
+        } else if (atOrderLimit) {
+          btnPlus.title = `Limite de ${maxOrderItems} itens por pedido`;
+        } else {
+          btnPlus.title = `Limite de ${maxPerItem} unidades por item`;
+        }
+      }
       btnPlus.addEventListener('click', () => {
         this.cartStore.updateQuantity(item.id, item.quantidade + 1, item.line_key);
       });
@@ -300,8 +353,27 @@ class App {
         this.cartStore.removeItem(item.id, null, item.line_key);
       });
 
+      const actionButtons = document.createElement('div');
+      actionButtons.className = 'item-action-buttons';
+
+      const hasCustomizations = Array.isArray(menuItem?.personalizacoes_permitidas)
+        && menuItem.personalizacoes_permitidas.length > 0;
+
+      if (hasCustomizations) {
+        const btnEdit = document.createElement('button');
+        btnEdit.className = 'btn-edit-item';
+        btnEdit.type = 'button';
+        btnEdit.textContent = 'Editar';
+        btnEdit.addEventListener('click', () => {
+          this.menuUI?.openEditCustomization(item);
+        });
+        actionButtons.appendChild(btnEdit);
+      }
+
+      actionButtons.appendChild(btnRemove);
+
       controls.appendChild(stepper);
-      controls.appendChild(btnRemove);
+      controls.appendChild(actionButtons);
       card.appendChild(controls);
 
       itemsList.appendChild(card);
@@ -361,6 +433,15 @@ class App {
     }
   }
 
+  closeAllModals() {
+    ['modal-settings', 'modal-delivery', 'modal-customization', 'modal-line-select'].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal) modal.style.display = 'none';
+    });
+    this.menuUI?.closeCustomizationModal();
+    this.menuUI?.closeLineSelection();
+  }
+
   /* ==========================================================================
      Modais (Configurações e Entrega)
      ========================================================================== */
@@ -368,7 +449,7 @@ class App {
     const modalSettings = document.getElementById('modal-settings');
     const modalDelivery = document.getElementById('modal-delivery');
 
-    // Abre modal de configurações
+    // Abre modal de configurações / monitoramento
     const btnOpenSettings = document.getElementById('btn-open-settings');
     if (btnOpenSettings) {
       btnOpenSettings.addEventListener('click', () => {
@@ -376,51 +457,45 @@ class App {
       });
     }
 
-    // Fechar modais ao clicar no X ou fora
-    document.querySelectorAll('.btn-close-modal, .btn-modal-cancel').forEach(btn => {
+    // Fechar modais ao clicar no X, em Cancelar ou fora do conteúdo.
+    // O seletor é restrito aos overlays para não capturar o X do cardápio.
+    document.querySelectorAll('.modal-overlay .btn-close-modal, .modal-overlay .btn-modal-cancel').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (modalSettings) modalSettings.style.display = 'none';
-        if (modalDelivery) modalDelivery.style.display = 'none';
+        this.closeAllModals();
       });
     });
 
     window.addEventListener('click', (e) => {
-      if (e.target === modalSettings) modalSettings.style.display = 'none';
-      if (e.target === modalDelivery) modalDelivery.style.display = 'none';
+      if (e.target.classList?.contains('modal-overlay')) {
+        this.closeAllModals();
+      }
     });
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (modalSettings) modalSettings.style.display = 'none';
-        if (modalDelivery) modalDelivery.style.display = 'none';
+        this.closeAllModals();
+        // Em telas pequenas o cardápio é um drawer sobre o conteúdo.
+        if (window.matchMedia('(max-width: 1180px)').matches) {
+          this.menuUI?.close();
+        }
       }
     });
 
-    // Formulario de Configuracoes
-    const formSettings = document.getElementById('form-settings');
-    if (formSettings) {
-      formSettings.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.saveSettings();
-      });
-    }
-
-    // Botao Limpar Dados
+    // Botão Limpar Dados da Sessão
     const btnClearAll = document.getElementById('btn-clear-all-data');
     if (btnClearAll) {
       btnClearAll.addEventListener('click', () => {
-        if (confirm('Deseja limpar todos os dados salvos em memória, histórico e chave de API?')) {
-          this.llmManager.clearStoredData();
-          this.cartStore.clearCart();
+        if (confirm('Deseja limpar todos os dados do carrinho, histórico e métricas?')) {
+          this.cartStore.resetSession();
           this.agent.clearHistory();
-          document.getElementById('api-key-input').value = '';
-          alert('Dados limpos com sucesso.');
+          monitorService.clearLogs();
+          alert('Dados da sessão limpos com sucesso.');
           if (modalSettings) modalSettings.style.display = 'none';
         }
       });
     }
 
-    // Formulario de Entrega
+    // Formulário de Entrega
     const formDelivery = document.getElementById('form-delivery');
     if (formDelivery) {
       formDelivery.addEventListener('submit', (e) => {
@@ -460,55 +535,8 @@ class App {
 
   openSettingsModal() {
     const modal = document.getElementById('modal-settings');
-    const modeSelect = document.getElementById('llm-mode-select');
-    const keyInput = document.getElementById('api-key-input');
-    const modelSelect = document.getElementById('model-select');
-    const keyGroup = document.getElementById('api-key-group');
-
     if (!modal) return;
-
-    modeSelect.value = this.llmManager.getMode();
-    keyInput.value = this.llmManager.apiKey || '';
-    modelSelect.value = this.llmManager.model;
-
-    const updateKeyVisibility = () => {
-      keyGroup.style.display = modeSelect.value === 'gemini' ? 'flex' : 'none';
-    };
-
-    modeSelect.onchange = updateKeyVisibility;
-    updateKeyVisibility();
-
     modal.style.display = 'flex';
-  }
-
-  saveSettings() {
-    const modeSelect = document.getElementById('llm-mode-select');
-    const keyInput = document.getElementById('api-key-input');
-    const modelSelect = document.getElementById('model-select');
-    const modal = document.getElementById('modal-settings');
-
-    const chosenMode = modeSelect.value;
-    const key = keyInput.value.trim();
-    const model = modelSelect.value;
-
-    this.llmManager.setMode(chosenMode);
-    this.llmManager.saveApiKey(key);
-    this.llmManager.setModel(model);
-
-    // Atualiza badge de modo no header
-    const badge = document.getElementById('header-mode-badge');
-    if (badge) {
-      if (chosenMode === 'gemini') {
-        badge.textContent = `Gemini (${model})`;
-      } else if (chosenMode === 'webllm') {
-        badge.textContent = 'WebLLM Local';
-      } else {
-        badge.textContent = 'Modo Offline (C)';
-      }
-    }
-
-    modal.style.display = 'none';
-    this.chatUI.appendSystemNotice(`Configurações salvas: Modo ${chosenMode.toUpperCase()} ativado.`);
   }
 
   openDeliveryModal() {
@@ -529,6 +557,7 @@ class App {
       const selectedDay = daySelect.value;
       this.cartStore.setDay(selectedDay);
       this.chatUI.appendSystemNotice(`Cardápio alternado para ${selectedDay.toUpperCase()}. Digite "ver cardápio" para conferir os pratos disponíveis hoje!`);
+      monitorService.logEvent('info', 'Cardápio', `Dia alterado para ${selectedDay.toUpperCase()}`);
     });
   }
 }

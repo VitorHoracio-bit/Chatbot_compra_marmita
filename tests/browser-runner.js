@@ -4,6 +4,7 @@
 
 import { pricingSuite } from './pricing.test.js';
 import { cartSuite } from './cart.test.js';
+import { customizationSuite } from './customization.test.js';
 import { guardrailsSuite } from './guardrails.test.js';
 import { agentSuite } from './agent.test.js';
 import { TestRunner, assert } from './test-utils.js';
@@ -68,7 +69,7 @@ export async function runBrowserTests(containerEl, summaryEl) {
     });
   }
 
-  const suites = [pricingSuite, cartSuite, guardrailsSuite, redteamSuite, agentSuite];
+  const suites = [pricingSuite, cartSuite, customizationSuite, guardrailsSuite, redteamSuite, agentSuite];
   containerEl.innerHTML = '';
 
   let totalTests = 0;

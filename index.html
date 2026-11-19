@@ -21,12 +21,18 @@
           <div class="brand-status">
             <span class="status-dot" aria-hidden="true"></span>
             <span>Aberto para pedidos</span>
-            <span class="mode-badge" id="header-mode-badge">Modo Offline (C)</span>
+            <span class="mode-badge" id="header-mode-badge">Sistema Local Ativo</span>
           </div>
         </div>
       </div>
 
       <div class="header-actions">
+        <!-- Botão Abrir Cardápio -->
+        <button id="btn-toggle-menu" class="btn-header-menu" type="button" aria-label="Abrir cardápio do dia" aria-expanded="false" aria-controls="menu-panel">
+          <span aria-hidden="true">📋</span>
+          <span class="btn-header-menu-label">Cardápio</span>
+        </button>
+
         <!-- Seletor Rápido de Dia da Semana para Simulação -->
         <select id="day-of-week-select" class="form-control" style="padding: 6px 10px; font-size: 0.82rem;" aria-label="Simular dia da semana">
           <option value="segunda">Segunda-feira</option>
@@ -62,8 +68,30 @@
       </div>
     </header>
 
-    <!-- Área Principal Dividida (Chat + Painel Lateral de Pedido) -->
+    <!-- Área Principal Dividida (Cardápio + Chat + Painel Lateral de Pedido) -->
     <main class="main-content" role="main">
+      <!-- Painel do Cardápio do Dia -->
+      <section class="menu-panel" id="menu-panel" aria-label="Cardápio do Dia">
+        <div class="menu-panel-header">
+          <div>
+            <h2>Cardápio do Dia</h2>
+            <p class="menu-day-label" id="menu-day-label">Hoje</p>
+          </div>
+          <button id="btn-close-menu" class="btn-close-modal" type="button" aria-label="Fechar cardápio">&times;</button>
+        </div>
+
+        <div class="menu-panel-body">
+          <div class="menu-grid" id="menu-grid">
+            <!-- Categorias e produtos renderizados dinamicamente -->
+          </div>
+
+          <div class="menu-empty" id="menu-empty" style="display: none;">
+            <span aria-hidden="true">🍽</span>
+            <p>Nenhum item disponível para este dia.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Container do Chat -->
       <section class="chat-container" aria-label="Atendimento via Chat">
         <!-- Lista de Mensagens -->
@@ -162,58 +190,119 @@
     </main>
   </div>
 
-  <!-- Modal de Configurações do Provedor de IA (BYOK e Privacidade) -->
+  <!-- Modal de Configurações e Monitoramento do Chatbot -->
   <div class="modal-overlay" id="modal-settings" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
-    <div class="modal-content">
+    <div class="modal-content modal-content-wide">
       <div class="modal-header">
-        <h3 id="modal-settings-title">⚙️ Configurações do Atendente de IA</h3>
+        <h3 id="modal-settings-title">⚙️ Painel de Controle e Configurações</h3>
         <button class="btn-close-modal" type="button" aria-label="Fechar modal">&times;</button>
       </div>
 
-      <form id="form-settings" class="modal-body">
-        <div class="form-group">
-          <label for="llm-mode-select">Modo de Operação da IA:</label>
-          <select id="llm-mode-select" class="form-control">
-            <option value="offline">Modo C: Offline Determinístico (Sem chave, sem custos, seguro)</option>
-            <option value="gemini">Modo A: Google Gemini API (BYOK - Traga sua chave)</option>
-            <option value="webllm">Modo B: WebLLM Local no Navegador (WebGPU)</option>
-          </select>
+      <!-- Navegação por Abas -->
+      <div class="settings-tabs-nav" role="tablist">
+        <button type="button" class="settings-tab-btn active" data-tab="general" role="tab" aria-selected="true">Geral & Sessão</button>
+        <button type="button" class="settings-tab-btn" data-tab="monitor" role="tab" aria-selected="false">📊 Monitoramento em Tempo Real</button>
+      </div>
+
+      <!-- Conteúdo das Abas -->
+      <div class="settings-tabs-content">
+        <!-- Aba 1: Geral & Sessão -->
+        <div class="settings-tab-pane active" id="tab-pane-general" role="tabpanel">
+          <form id="form-settings" class="modal-body" style="padding: 16px 0;">
+            <div class="form-group">
+              <label>Status do Motor de Atendimento:</label>
+              <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background-color: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span><strong>Motor Local Determinístico:</strong> Ativo, 100% Client-Side e sem necessidade de credenciais externas.</span>
+              </div>
+            </div>
+
+            <div class="privacy-notice">
+              <strong>🔒 Privacidade e Confiabilidade (100% Local):</strong>
+              <p style="margin-top: 4px;">Este chatbot processa todos os pedidos diretamente no seu navegador. Nenhuma informação é enviada a servidores ou modelos de linguagem externos. Suas escolhas e dados de entrega ficam restritos à sua sessão local.</p>
+            </div>
+
+            <div class="modal-footer" style="padding: 14px 0 0 0; border: none; margin-top: 10px;">
+              <button type="button" id="btn-clear-all-data" class="btn-secondary" style="color: var(--danger); border-color: var(--danger);">Limpar Dados da Sessão</button>
+              <button type="button" class="btn-primary btn-modal-cancel">Concluir</button>
+            </div>
+          </form>
         </div>
 
-        <div class="form-group" id="api-key-group" style="display: none;">
-          <label for="api-key-input">Chave de API do Google Gemini (AI Studio):</label>
-          <input 
-            type="password" 
-            id="api-key-input" 
-            class="form-control" 
-            placeholder="AIzaSy..." 
-            autocomplete="off"
-          >
-          <small style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">
-            Obtenha sua chave gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Google AI Studio</a>.
-          </small>
-        </div>
+        <!-- Aba 2: Monitoramento em Tempo Real -->
+        <div class="settings-tab-pane" id="tab-pane-monitor" role="tabpanel">
+          <div class="monitor-container">
+            <!-- Barra Superior de Controles do Monitor -->
+            <div class="monitor-controls-bar">
+              <div class="monitor-title-group">
+                <span style="font-weight: 700; font-size: 0.95rem;">Painel de Operações e Métricas</span>
+                <span class="monitor-pause-tag" id="monitor-pause-indicator" style="display: none;">⏸️ PAUSADO</span>
+              </div>
+              <div class="monitor-actions-group">
+                <button type="button" id="btn-monitor-pause" class="btn-monitor-ctrl" title="Pausar ou retomar atualização visual">⏸️ Pausar</button>
+                <button type="button" id="btn-monitor-clear" class="btn-monitor-ctrl btn-danger-soft" title="Limpar registros de eventos">🗑️ Limpar</button>
+              </div>
+            </div>
 
-        <div class="form-group">
-          <label for="model-select">Modelo de Linguagem:</label>
-          <select id="model-select" class="form-control">
-            <option value="gemini-2.0-flash">gemini-2.0-flash (Recomendado - Mais rápido e preciso)</option>
-            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-          </select>
-        </div>
+            <!-- Grid de Indicadores Visuais (KPIs) -->
+            <div class="monitor-kpi-grid">
+              <div class="kpi-card">
+                <span class="kpi-label">Estado</span>
+                <span class="kpi-value"><span id="metric-status" class="metric-status-badge status-ativo">ATIVO</span></span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Mensagens Recebidas</span>
+                <span class="kpi-value" id="metric-received">0</span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Mensagens Processadas</span>
+                <span class="kpi-value" id="metric-processed">0</span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Respostas Emitidas</span>
+                <span class="kpi-value" id="metric-responses">0</span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Erros Registrados</span>
+                <span class="kpi-value" id="metric-errors" style="color: var(--text-primary);">0</span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Tempo Médio</span>
+                <span class="kpi-value" id="metric-avg-time">0 ms</span>
+              </div>
+              <div class="kpi-card">
+                <span class="kpi-label">Último Tempo</span>
+                <span class="kpi-value" id="metric-last-time">0 ms</span>
+              </div>
+            </div>
 
-        <div class="privacy-notice">
-          <strong>🔒 Aviso de Privacidade e Segurança (100% Client-Side):</strong>
-          <p style="margin-top: 4px;">Sua chave de API e seus dados pessoais ficam armazenados exclusivamente na memória da sua sessão do navegador (sessionStorage). Eles NUNCA são gravados em servidores nossos ou enviados a terceiros além da própria API do Google.</p>
-        </div>
+            <!-- Divisão em duas colunas: Conversação em Tempo Real vs Log de Eventos Técnicos -->
+            <div class="monitor-dual-view">
+              <!-- Coluna A: Visualização da Conversação -->
+              <div class="monitor-pane">
+                <div class="monitor-pane-header">
+                  <span>💬 Conversação em Tempo Real</span>
+                  <small style="color: var(--text-muted);">Mensagens de cliente e bot</small>
+                </div>
+                <div class="monitor-chat-stream" id="monitor-chat-list">
+                  <div class="monitor-empty">Aguardando primeiras interações...</div>
+                </div>
+              </div>
 
-        <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
-          <button type="button" id="btn-clear-all-data" class="btn-secondary" style="color: var(--danger); border-color: var(--danger);">Limpar Todos os Dados</button>
-          <button type="button" class="btn-secondary btn-modal-cancel">Cancelar</button>
-          <button type="submit" class="btn-primary">Salvar Alterações</button>
+              <!-- Coluna B: Monitoramento de Eventos Técnicos -->
+              <div class="monitor-pane">
+                <div class="monitor-pane-header">
+                  <span>⚡ Eventos Técnicos do Chatbot</span>
+                  <small style="color: var(--text-muted);">Entradas, saídas e estado interno</small>
+                </div>
+                <div class="monitor-events-stream" id="monitor-event-list">
+                  <div class="monitor-empty">Nenhum evento registrado.</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -252,6 +341,65 @@
         <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
           <button type="button" class="btn-secondary btn-modal-cancel">Voltar</button>
           <button type="submit" class="btn-primary">Registrar Endereço</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Personalização de Produto -->
+  <div class="modal-overlay" id="modal-customization" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="customization-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 id="customization-title">Personalizar item</h3>
+          <p class="modal-subtitle" id="customization-subtitle"></p>
+        </div>
+        <button class="btn-close-modal" type="button" aria-label="Fechar modal de personalização">&times;</button>
+      </div>
+
+      <form id="form-customization" class="modal-body">
+        <div id="customization-options" class="customization-options">
+          <!-- Grupos de opções renderizados dinamicamente -->
+        </div>
+
+        <div class="form-group">
+          <label for="customization-obs">Observações (opcional)</label>
+          <textarea
+            id="customization-obs"
+            class="form-control customization-obs"
+            rows="3"
+            placeholder="Ex.: sem cebola, ponto da carne..."
+          ></textarea>
+          <div class="obs-counter"><span id="customization-obs-counter">0</span>/<span id="customization-obs-limit">140</span></div>
+        </div>
+
+        <div class="customization-warning" id="customization-warning" style="display: none;" role="alert"></div>
+
+        <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
+          <button type="button" class="btn-secondary btn-modal-cancel" id="btn-cancel-customization">Cancelar</button>
+          <button type="submit" class="btn-primary" id="btn-save-customization">Adicionar ao pedido</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Seleção de Configuração do Mesmo Produto -->
+  <div class="modal-overlay" id="modal-line-select" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="line-select-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="line-select-title">Escolha uma configuração</h3>
+        <button class="btn-close-modal" type="button" aria-label="Fechar seleção de configuração">&times;</button>
+      </div>
+
+      <form id="form-line-select" class="modal-body">
+        <p class="line-select-description" id="line-select-description"></p>
+        <div class="line-select-options" id="line-select-options">
+          <!-- Opções renderizadas dinamicamente -->
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0 0; border: none;">
+          <button type="button" class="btn-secondary btn-modal-cancel" id="btn-cancel-line-select">Cancelar</button>
+          <button type="submit" class="btn-primary" id="btn-confirm-line-select">Confirmar</button>
         </div>
       </form>
     </div>

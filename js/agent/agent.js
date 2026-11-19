@@ -1,38 +1,43 @@
 /**
- * Agente Orquestrador de Vendas e Tool Calling.
- * Coordena os guardrails de entrada, integracao de LLM com retry, validacao de saida
- * e execucao deterministica de regras de negocio na CartStore.
+ * Agente Orquestrador de Vendas do Chatbot.
+ * 100% Determinístico e Local, sem dependências de LLMs ou chamadas a APIs externas.
+ * Coordena os guardrails de entrada, o motor de diálogo local, o monitoramento em tempo real
+ * e a execução determinística de regras de negócio na CartStore.
  */
 
 import { RateLimiter, validateUserInput } from '../guardrails/input.js';
-import { validateAndSanitizeLLMOutput } from '../guardrails/output.js';
-import { buildSystemPrompt, wrapUserData } from './prompts.js';
-import { formatCurrency } from '../cart/pricing.js';
+import { validateAndSanitizeOutput } from '../guardrails/output.js';
+import { LocalDialogueEngine } from './dialogue.js';
+import { formatCurrency, normalizeString } from '../cart/pricing.js';
+import { monitorService } from '../monitor/monitor.js';
 
 export class MarmitaAgent {
   /**
-   * @param {object} cartStore Instancia de CartStore
-   * @param {object} llmManager Instancia de LLMProviderManager
-   * @param {object} configData Configuracoes gerais
+   * @param {object} cartStore Instância de CartStore
+   * @param {object} configData Configurações gerais
    */
-  constructor(cartStore, llmManager, configData = {}) {
+  constructor(cartStore, configData = {}) {
     this.cartStore = cartStore;
-    this.llmManager = llmManager;
     this.configData = configData;
+    this.dialogueEngine = new LocalDialogueEngine(cartStore);
 
-    const rateLimit = configData?.limits?.rate_limit_per_minute ?? 10;
+    const rateLimit = configData?.limits?.rate_limit_per_minute ?? 20;
     this.rateLimiter = new RateLimiter(rateLimit);
     this.history = [];
+    // Aguarda a escolha do usuario quando o mesmo produto tem varias linhas.
+    this.pendingLineSelection = null;
   }
 
   clearHistory() {
     this.history = [];
+    this.pendingLineSelection = null;
     this.rateLimiter.reset();
+    monitorService.logEvent('info', 'Conversa', 'Histórico interno do agente foi limpo.');
   }
 
   /**
-   * Ponto de entrada principal para interacao do cliente.
-   * @param {string} userRawMessage Mensagem bruta digitada pelo usuario
+   * Ponto de entrada principal para interação do cliente.
+   * @param {string} userRawMessage Mensagem bruta digitada pelo usuário
    * @returns {Promise<{
    *   text: string,
    *   intent: string,
@@ -43,11 +48,24 @@ export class MarmitaAgent {
    * }>}
    */
   async handleUserMessage(userRawMessage) {
-    // 1. Guardrail de Entrada (Pre-LLM)
+    const startTime = performance.now();
+
+    // Registra entrada no monitoramento
+    monitorService.recordUserMessage(userRawMessage);
+
+    // 1. Guardrail de Entrada
     const inputValidation = validateUserInput(userRawMessage, this.rateLimiter, this.configData);
     if (!inputValidation.valid) {
+      const refusalText = inputValidation.userMessage || 'Mensagem não permitida.';
+      const durationMs = performance.now() - startTime;
+
+      monitorService.recordProcessing(durationMs, 'bloqueado_guardrail', {
+        reason: inputValidation.reason || 'Guardrail de entrada acionado'
+      });
+      monitorService.recordBotResponse(refusalText, 'bloqueado_guardrail');
+
       return {
-        text: inputValidation.userMessage || 'Mensagem não permitida.',
+        text: refusalText,
         intent: 'bloqueado_guardrail',
         actions: []
       };
@@ -55,66 +73,170 @@ export class MarmitaAgent {
 
     const sanitizedInput = inputValidation.sanitizedText;
 
-    // 2. Montagem de Contexto e Delimitacao
-    const systemPrompt = buildSystemPrompt(this.cartStore);
-    const wrappedUser = wrapUserData(sanitizedInput);
+    // Resposta a uma pergunta anterior de selecao de linha no carrinho.
+    const pendingResult = this.tryResolvePendingSelection(sanitizedInput);
+    if (pendingResult) {
+      const durationMs = performance.now() - startTime;
+      monitorService.recordProcessing(durationMs, pendingResult.intent, {
+        actions: pendingResult.actions
+      });
+      monitorService.recordBotResponse(pendingResult.text, pendingResult.intent);
 
-    // 3. Execucao no LLM com retry (ate 2 tentativas se JSON vier invalido)
-    let llmResult = null;
-    let providerInfo = null;
-    let attempts = 0;
-    const maxAttempts = 2;
+      this.history.push({ role: 'user', text: sanitizedInput });
+      this.history.push({ role: 'assistant', text: pendingResult.text });
+      if (this.history.length > 12) this.history = this.history.slice(-12);
 
-    while (attempts < maxAttempts) {
-      attempts++;
-      try {
-        const response = await this.llmManager.generateResponse(
-          systemPrompt,
-          wrappedUser,
-          this.history
-        );
+      return pendingResult;
+    }
 
-        providerInfo = response;
-        llmResult = response.result;
-        break;
-      } catch (err) {
-        console.warn(`Tentativa ${attempts} de chamada ao LLM falhou:`, err.message);
-        if (attempts >= maxAttempts) {
-          // Fallback final para modo offline
-          const fallback = await this.llmManager.offlineProvider.generateResponse(systemPrompt, sanitizedInput);
-          llmResult = fallback;
-          providerInfo = { providerUsed: 'offline', fallbackApplied: true, warning: 'Alternado para modo offline por segurança.' };
-        }
+    try {
+      // 2. Processamento Local e Determinístico via LocalDialogueEngine
+      const rawDialogueResult = await this.dialogueEngine.generateResponse(sanitizedInput);
+
+      // 3. Validação e Sanitização da Saída
+      const sanitizedOutput = validateAndSanitizeOutput(rawDialogueResult, this.cartStore);
+      const structuredAction = sanitizedOutput.output;
+
+      // 4. Execução Determinística da Ação na CartStore
+      const executionResult = this.executeIntent(structuredAction, sanitizedOutput.sanitizedMessage);
+      const durationMs = performance.now() - startTime;
+
+      // 5. Registra processamento e resposta no monitoramento
+      monitorService.recordProcessing(durationMs, structuredAction.intent, {
+        actions: executionResult.actions
+      });
+      monitorService.recordBotResponse(executionResult.text, structuredAction.intent);
+
+      // 6. Atualiza histórico local
+      this.history.push({ role: 'user', text: sanitizedInput });
+      this.history.push({ role: 'assistant', text: executionResult.text });
+      if (this.history.length > 12) {
+        this.history = this.history.slice(-12);
       }
+
+      return {
+        text: executionResult.text,
+        intent: structuredAction.intent,
+        actions: executionResult.actions || [],
+        requiresDelivery: executionResult.requiresDelivery,
+        whatsappUrl: executionResult.whatsappUrl
+      };
+    } catch (err) {
+      console.error('Erro no processamento do agente:', err);
+      monitorService.recordError('Agente', err);
+
+      const errorText = `Ops! Ocorreu um problema ao processar sua solicitação: ${err.message}.`;
+      monitorService.recordBotResponse(errorText, 'erro');
+
+      return {
+        text: errorText,
+        intent: 'erro',
+        actions: []
+      };
+    }
+  }
+
+  /**
+   * Interpreta a resposta do cliente a uma solicitacao de selecao de linha.
+   * Aceita o numero da opcao ou um trecho da descricao da configuracao.
+   * @private
+   */
+  tryResolvePendingSelection(userText) {
+    const pending = this.pendingLineSelection;
+    if (!pending) return null;
+
+    const norm = normalizeString(userText).trim();
+    let selected = null;
+
+    if (/^\d+$/.test(norm)) {
+      selected = pending.options[parseInt(norm, 10) - 1] || null;
+    } else {
+      const matches = pending.options.filter(option => {
+        const label = normalizeString(option.label);
+        if (!label) return false;
+        return norm === label
+          || norm.includes(label)
+          || (norm.length >= 3 && label.includes(norm));
+      });
+      if (matches.length === 1) selected = matches[0];
     }
 
-    // 4. Guardrail de Saida (Pos-LLM)
-    const sanitizedOutput = validateAndSanitizeLLMOutput(llmResult, this.cartStore);
-    const structuredAction = sanitizedOutput.output;
-
-    // 5. Execucao Deterministica da Acao na CartStore
-    const executionResult = this.executeIntent(structuredAction, sanitizedOutput.sanitizedMessage);
-
-    // 6. Atualiza historico com mensagens sanitizadas
-    this.history.push({ role: 'user', text: sanitizedInput });
-    this.history.push({ role: 'assistant', text: executionResult.text });
-    if (this.history.length > 8) {
-      this.history = this.history.slice(-8);
+    // Resposta nao relacionada: abandona a selecao e segue o fluxo normal.
+    if (!selected) {
+      this.pendingLineSelection = null;
+      return null;
     }
 
+    this.pendingLineSelection = null;
+    let res;
+    if (pending.operation === 'remover') {
+      res = this.cartStore.removeItem(pending.itemId, pending.quantity, selected.lineKey);
+    } else {
+      res = this.cartStore.updateQuantity(pending.itemId, pending.quantity, selected.lineKey);
+    }
+
+    monitorService.logEvent('cart', 'Carrinho', res.message, {
+      item: pending.itemId,
+      lineKey: selected.lineKey
+    });
+
+    const state = this.cartStore.getState();
     return {
-      text: executionResult.text,
-      intent: structuredAction.intent,
-      actions: executionResult.actions || [],
-      warning: providerInfo?.warning,
-      requiresDelivery: executionResult.requiresDelivery,
-      whatsappUrl: executionResult.whatsappUrl
+      text: `${res.message}\n\n🛒 *Subtotal atual:* ${state.subtotalFormatted} (${state.itemCount} itens)`,
+      intent: 'selecao_linha',
+      actions: ['line_selected']
     };
   }
 
   /**
-   * Executa a regra de negocio correspondente a intencao de forma 100% deterministica.
-   * Todos os valores e resumos sao construidos por codigo em JS.
+   * Aplica dados de entrega que vieram junto de outra intencao (ex.: adicionar
+   * produto e informar endereco na mesma mensagem).
+   * @private
+   * @returns {string} Linha adicional para a resposta ou string vazia.
+   */
+  applyDeliveryFromAction(action) {
+    const delivery = action?.delivery;
+    if (!delivery || (!delivery.bairro && !delivery.endereco)) return '';
+
+    const res = this.cartStore.setDelivery(delivery.bairro, delivery.endereco);
+    monitorService.logEvent(
+      'cart',
+      'Entrega',
+      `Endereço registrado: ${res.delivery.endereco || 'pendente'} (${res.delivery.bairro || 'pendente'})`
+    );
+    return `📍 ${res.message}`;
+  }
+
+  /**
+   * Monta a mensagem numerada e guarda o estado pendente de selecao.
+   * @private
+   */
+  requestLineSelection(selection, operation, quantity = null) {
+    this.pendingLineSelection = {
+      itemId: selection.itemId,
+      options: selection.options,
+      operation,
+      quantity
+    };
+
+    const lines = selection.options.map((option, index) => {
+      const details = option.label === 'Sem personalizações'
+        ? 'sem personalizações'
+        : option.label;
+      return `${index + 1}) ${option.quantidade}x — ${details}`;
+    });
+
+    return [
+      'Você tem mais de uma configuração deste item no carrinho:',
+      ...lines,
+      '',
+      'Responda com o número da opção que deseja alterar (ou use os controles do carrinho).'
+    ].join('\n');
+  }
+
+  /**
+   * Executa a regra de negócio correspondente à intenção de forma 100% determinística.
+   * Todos os valores, itens e resumos são construídos por código determinístico em JS.
    */
   executeIntent(action, fallbackUserMessage) {
     const intent = action.intent;
@@ -125,7 +247,6 @@ export class MarmitaAgent {
         const available = this.cartStore.getAvailableItemsToday();
         let msg = `📅 *CARDÁPIO DE HOJE (${this.cartStore.currentDay.toUpperCase()}):*\n\n`;
 
-        // Agrupa por categoria
         const categorias = { marmita: '🍱 Marmitas do Dia', bebida: '🥤 Bebidas', sobremesa: '🍮 Sobremesas' };
         for (const [catKey, catTitle] of Object.entries(categorias)) {
           const itemsCat = available.filter(i => i.categoria === catKey);
@@ -160,10 +281,16 @@ export class MarmitaAgent {
 
           messages.push(addRes.message);
           actions.push({ item: item.id, success: addRes.success });
+          monitorService.logEvent('cart', 'Carrinho', addRes.message, { item: item.id, success: addRes.success });
         }
 
         const updatedState = this.cartStore.getState();
         messages.push(`\n🛒 *Subtotal atual:* ${updatedState.subtotalFormatted} (${updatedState.itemCount} itens)`);
+
+        // Mensagem combinada: produtos + endereco de entrega na mesma frase.
+        const deliveryApplied = this.applyDeliveryFromAction(action);
+        if (deliveryApplied) messages.push(deliveryApplied);
+
         messages.push('Deseja algo mais ou quer informar o endereço para entrega?');
 
         return { text: messages.join('\n'), actions };
@@ -177,7 +304,12 @@ export class MarmitaAgent {
         const messages = [];
         for (const item of action.items) {
           const remRes = this.cartStore.removeItem(item.id, item.quantidade);
+          if (remRes.requiresLineSelection) {
+            messages.push(this.requestLineSelection(remRes, 'remover', item.quantidade));
+            continue;
+          }
           messages.push(remRes.message);
+          monitorService.logEvent('cart', 'Carrinho', remRes.message, { item: item.id });
         }
 
         const updatedState = this.cartStore.getState();
@@ -194,7 +326,12 @@ export class MarmitaAgent {
         const messages = [];
         for (const item of action.items) {
           const updRes = this.cartStore.updateQuantity(item.id, item.quantidade);
+          if (updRes.requiresLineSelection) {
+            messages.push(this.requestLineSelection(updRes, 'alterar', item.quantidade));
+            continue;
+          }
           messages.push(updRes.message);
+          monitorService.logEvent('cart', 'Carrinho', updRes.message, { item: item.id, quantidade: item.quantidade });
         }
 
         const updatedState = this.cartStore.getState();
@@ -241,6 +378,8 @@ export class MarmitaAgent {
         const res = this.cartStore.setDelivery(bairro, endereco);
         const updated = this.cartStore.getState();
 
+        monitorService.logEvent('cart', 'Entrega', `Endereço registrado: ${res.delivery.endereco || 'pendente'} (${res.delivery.bairro || 'pendente'})`);
+
         let msg = `📍 ${res.message}\n`;
         msg += `🛒 *Total com entrega:* ${updated.totalFormatted}\n\n`;
         msg += 'Tudo certo para você? Digite "confirmar" para finalizar seu pedido!';
@@ -249,14 +388,33 @@ export class MarmitaAgent {
       }
 
       case 'confirmar_pedido': {
+        // Permite "Entregar na Rua X, 123 no Centro. Confirmar pedido!".
+        this.applyDeliveryFromAction(action);
+
         const confRes = this.cartStore.confirmOrder();
         if (!confRes.success) {
+          monitorService.logEvent('cart', 'Confirmação', `Tentativa de confirmação falhou: ${confRes.message}`);
+
+          if (confRes.alreadyConfirmed) {
+            let alreadyMsg = `ℹ️ ${confRes.message}`;
+            if (confRes.orderText) {
+              alreadyMsg += `\n\n${confRes.orderText}`;
+            }
+            return {
+              text: alreadyMsg,
+              whatsappUrl: confRes.whatsappUrl,
+              actions: ['order_already_confirmed']
+            };
+          }
+
           return {
             text: `⚠️ ${confRes.message}`,
             requiresDelivery: confRes.requiresDelivery,
             actions: ['confirm_failed']
           };
         }
+
+        monitorService.logEvent('cart', 'Confirmação', 'Pedido confirmado com sucesso e estoque atualizado.');
 
         let msg = `🎉 *PEDIDO CONFIRMADO COM SUCESSO!*\n\n`;
         msg += confRes.orderText;
@@ -270,10 +428,15 @@ export class MarmitaAgent {
       }
 
       case 'cancelar_pedido': {
-        this.cartStore.clearCart();
+        const cancelRes = this.cartStore.cancelOrder();
+        monitorService.logEvent(
+          'cart',
+          'Cancelamento',
+          cancelRes.message
+        );
         return {
-          text: 'Seu pedido foi cancelado e o carrinho foi limpo. Quando quiser começar de novo, é só me chamar!',
-          actions: ['order_cancelled']
+          text: cancelRes.message,
+          actions: [cancelRes.alreadyCancelled ? 'order_already_cancelled' : 'order_cancelled']
         };
       }
 
