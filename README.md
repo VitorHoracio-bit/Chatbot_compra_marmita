@@ -29,9 +29,9 @@ A aplicação abstrai os provedores em `js/llm/provider.js`, permitindo alternâ
 
 | Modo | Descrição | Requisitos | Casos de Uso |
 | :--- | :--- | :--- | :--- |
-| **Modo A (BYOK - Modo Padrão Obrigatório)** | Google Gemini API (`gemini-2.0-flash`, `gemini-1.5-flash`) via REST direto com CORS habilitado. | Chave de API informada pelo usuário. O chatbot funciona com a chave configurada. | Atendimento conversacional com inteligência artificial completa e tool calling. |
-| **Modo B (Local)** | Execução local no navegador via WebLLM / WebGPU. | Navegador com suporte à API WebGPU. | Execução privada no dispositivo. |
-| **Modo C (Offline)** | Motor determinístico offline baseado em regras gramaticais em JS puro. | Nenhum. | Suporte de contingência para testes e regras locais. |
+| **Modo A (BYOK - Padrão Online)** | Google Gemini API (`gemini-2.0-flash`, `gemini-1.5-flash`) via REST direto com CORS habilitado. | Chave de API própria informada pelo usuário. | Atendimento conversacional com alta capacidade de interpretação semântica. |
+| **Modo B (Local)** | Execução local no navegador via WebLLM / WebGPU. | Navegador com suporte à API WebGPU. | Execução 100% privada e sem requisições externas de IA. |
+| **Modo C (Fallback Obrigatório)** | Motor determinístico offline baseado em regras gramaticais e extração de entidades em JS puro. | Nenhum (funciona offline). | **Garantia de disponibilidade.** Ativado automaticamente se a rede cair, se a cota do Gemini acabar ou se o usuário não possuir chave. |
 
 ---
 

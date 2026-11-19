@@ -22,14 +22,10 @@
     "max_obs_length": 140,
     "rate_limit_per_minute": 10
   },
-  "default_llm_mode": "gemini",
-  "require_api_key": true,
+  "default_llm_mode": "offline",
   "available_models": [
-    "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-1.5-flash",
+    "gemini-1.5-pro"
   ]
 }

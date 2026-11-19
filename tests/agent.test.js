@@ -129,17 +129,3 @@ agentSuite.test('Cancelamento de pedido esvazia o carrinho', async () => {
   assert(resCancel.text.includes('cancelado'), 'Deveria confirmar cancelamento');
   assertEqual(cart.items.length, 0);
 });
-
-agentSuite.test('Bloqueio estrito quando require_api_key está ativo e chave não foi fornecida', async () => {
-  const strictConfig = { ...mockConfig, require_api_key: true, default_llm_mode: 'gemini' };
-  const cart = new CartStore(mockMenu, strictConfig, 'segunda');
-  const llmManager = new LLMProviderManager(cart, strictConfig);
-  llmManager.saveApiKey('');
-
-  const agent = new MarmitaAgent(cart, llmManager, strictConfig);
-  const res = await agent.handleUserMessage('quero 1 bife');
-  assertEqual(res.intent, 'chave_ausente');
-  assertEqual(res.requiresApiKey, true);
-  assert(res.text.includes('Chave de API necessária'), 'Deveria solicitar chave');
-  assertEqual(cart.items.length, 0);
-});
